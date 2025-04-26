@@ -9,6 +9,9 @@ const config: CapacitorConfig = {
     url: 'https://f941be39-acf1-4e31-b3c4-dea80e13586e.lovableproject.com?forceHideBadge=true',
     cleartext: true
   },
+  android: {
+    allowMixedContent: true, // Allow HTTP content in HTTPS app
+  },
   plugins: {
     LocalNotifications: {
       smallIcon: "ic_stat_icon_config_sample",
