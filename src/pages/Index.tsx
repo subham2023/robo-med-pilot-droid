@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,22 +6,26 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Settings, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Square } from "lucide-react";
 import JoystickControl from "@/components/JoystickControl";
 import { useToast } from "@/components/ui/use-toast";
+import MedicineScheduler from "@/components/MedicineScheduler";
 
 const Index = () => {
-  // Configuration state
   const [settings, setSettings] = useState({
     motorControlUrl: "http://192.168.1.100:80/motor",
     servoControlUrl: "http://192.168.1.100:80/servo",
     cameraUrl: "http://192.168.1.100:81/stream"
   });
 
-  // State for tab selection
   const [activeTab, setActiveTab] = useState("control");
   
+  const [scheduledMedicines, setScheduledMedicines] = useState<Array<{
+    name: string;
+    drawer: 'drawer1' | 'drawer2';
+    time: string;
+  }>>([]);
+
   const { toast } = useToast();
   const webViewRef = useRef<HTMLIFrameElement>(null);
 
-  // Load saved settings on component mount
   useEffect(() => {
     const savedSettings = localStorage.getItem('robotSettings');
     if (savedSettings) {
@@ -30,7 +33,32 @@ const Index = () => {
     }
   }, []);
 
-  // Save settings to local storage
+  useEffect(() => {
+    const savedMedicines = localStorage.getItem('scheduledMedicines');
+    if (savedMedicines) {
+      setScheduledMedicines(JSON.parse(savedMedicines));
+    }
+  }, []);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = new Date();
+      const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+      
+      scheduledMedicines.forEach(medicine => {
+        if (medicine.time === currentTime) {
+          toast({
+            title: "Medicine Time!",
+            description: `Time to take ${medicine.name}`,
+          });
+          sendServoCommand(medicine.drawer, 'open');
+        }
+      });
+    }, 30000); // Check every 30 seconds
+
+    return () => clearInterval(interval);
+  }, [scheduledMedicines]);
+
   const saveSettings = () => {
     localStorage.setItem('robotSettings', JSON.stringify(settings));
     toast({
@@ -40,7 +68,6 @@ const Index = () => {
     setActiveTab("control");
   };
 
-  // Functions to send commands to ESP32s
   const sendMotorCommand = async (command: string) => {
     try {
       const url = `${settings.motorControlUrl}?action=${command}`;
@@ -85,22 +112,25 @@ const Index = () => {
     }
   };
 
-  // Handle settings input changes
   const handleSettingChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setSettings(prev => ({ ...prev, [name]: value }));
   };
 
-  // Reload the camera stream
   const reloadCamera = () => {
     if (webViewRef.current) {
       webViewRef.current.src = settings.cameraUrl;
     }
   };
 
+  const handleScheduleMedicine = (medicine: { name: string; drawer: 'drawer1' | 'drawer2'; time: string }) => {
+    const updatedMedicines = [...scheduledMedicines, medicine];
+    setScheduledMedicines(updatedMedicines);
+    localStorage.setItem('scheduledMedicines', JSON.stringify(updatedMedicines));
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
       <header className="bg-white shadow">
         <div className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8 flex justify-between items-center">
           <h1 className="text-2xl font-bold text-cyan-700">MedPilot Control</h1>
@@ -114,7 +144,6 @@ const Index = () => {
         </div>
       </header>
 
-      {/* Main Content */}
       <main className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="grid w-full grid-cols-2">
@@ -122,10 +151,8 @@ const Index = () => {
             <TabsTrigger value="settings">Settings</TabsTrigger>
           </TabsList>
 
-          {/* Control Panel Tab */}
           <TabsContent value="control" className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
-              {/* Left Controls - Drawer Servos */}
               <div className="md:col-span-2 flex flex-col space-y-4 justify-center">
                 <Card>
                   <CardContent className="p-4">
@@ -143,6 +170,9 @@ const Index = () => {
                       >
                         Close
                       </Button>
+                    </div>
+                    <div className="mt-4">
+                      <MedicineScheduler onSchedule={handleScheduleMedicine} />
                     </div>
                   </CardContent>
                 </Card>
@@ -168,7 +198,6 @@ const Index = () => {
                 </Card>
               </div>
 
-              {/* Center - Camera Feed */}
               <div className="md:col-span-8">
                 <Card className="h-full">
                   <CardContent className="p-4 flex flex-col h-full">
@@ -183,7 +212,6 @@ const Index = () => {
                       </Button>
                     </div>
                     <div className="relative bg-black rounded-md flex-grow min-h-[300px] overflow-hidden">
-                      {/* Camera Stream */}
                       <iframe 
                         ref={webViewRef}
                         src={settings.cameraUrl} 
@@ -191,13 +219,11 @@ const Index = () => {
                         title="IP Camera Stream"
                       />
                       
-                      {/* Fallback message when stream is not available */}
                       <div className="absolute inset-0 flex items-center justify-center text-white opacity-50 pointer-events-none">
                         {!settings.cameraUrl && "Configure camera URL in settings"}
                       </div>
                     </div>
                     
-                    {/* Joystick Control */}
                     <div className="mt-4 flex justify-center">
                       <JoystickControl onMove={sendMotorCommand} />
                     </div>
@@ -205,7 +231,6 @@ const Index = () => {
                 </Card>
               </div>
 
-              {/* Right Controls - Head Servos */}
               <div className="md:col-span-2 flex flex-col space-y-4 justify-center">
                 <Card>
                   <CardContent className="p-4">
@@ -254,7 +279,6 @@ const Index = () => {
             </div>
           </TabsContent>
 
-          {/* Settings Tab */}
           <TabsContent value="settings">
             <Card>
               <CardContent className="p-6">
@@ -320,7 +344,6 @@ const Index = () => {
         </Tabs>
       </main>
 
-      {/* Footer */}
       <footer className="bg-gray-50 py-4 border-t">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center text-sm text-gray-500">
           MedPilot Control Interface | v1.0
