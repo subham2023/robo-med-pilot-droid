@@ -3,10 +3,18 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Settings, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Square } from "lucide-react";
+import { Settings, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Square, List } from "lucide-react";
 import JoystickControl from "@/components/JoystickControl";
 import { useToast } from "@/components/ui/use-toast";
 import MedicineScheduler from "@/components/MedicineScheduler";
+import { LocalNotifications } from '@capacitor/local-notifications';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+
+interface Medicine {
+  name: string;
+  drawer: 'drawer1' | 'drawer2';
+  time: string;
+}
 
 const Index = () => {
   const [settings, setSettings] = useState({
@@ -16,15 +24,24 @@ const Index = () => {
   });
 
   const [activeTab, setActiveTab] = useState("control");
+  const [scheduledMedicines, setScheduledMedicines] = useState<Medicine[]>([]);
   
-  const [scheduledMedicines, setScheduledMedicines] = useState<Array<{
-    name: string;
-    drawer: 'drawer1' | 'drawer2';
-    time: string;
-  }>>([]);
-
   const { toast } = useToast();
   const webViewRef = useRef<HTMLIFrameElement>(null);
+
+  useEffect(() => {
+    const initializeNotifications = async () => {
+      try {
+        if ('Capacitor' in window) {
+          await LocalNotifications.requestPermissions();
+        }
+      } catch (error) {
+        console.log('Running in web environment, notifications will be shown as toasts');
+      }
+    };
+
+    initializeNotifications();
+  }, []);
 
   useEffect(() => {
     const savedSettings = localStorage.getItem('robotSettings');
@@ -47,17 +64,47 @@ const Index = () => {
       
       scheduledMedicines.forEach(medicine => {
         if (medicine.time === currentTime) {
-          toast({
-            title: "Medicine Time!",
-            description: `Time to take ${medicine.name}`,
-          });
+          showNotification(medicine);
           sendServoCommand(medicine.drawer, 'open');
         }
       });
-    }, 30000); // Check every 30 seconds
+    }, 30000);
 
     return () => clearInterval(interval);
   }, [scheduledMedicines]);
+
+  const showNotification = async (medicine: Medicine) => {
+    const drawerName = medicine.drawer === 'drawer1' ? 'Left Drawer' : 'Right Drawer';
+    const message = `Time to take ${medicine.name} from ${drawerName}`;
+    
+    try {
+      if ('Capacitor' in window) {
+        await LocalNotifications.schedule({
+          notifications: [
+            {
+              title: 'Medicine Time!',
+              body: message,
+              id: Date.now(),
+              schedule: { at: new Date() },
+              sound: 'beep.wav',
+              actionTypeId: 'OPEN_DRAWER',
+              extra: { medicineId: medicine.drawer }
+            }
+          ]
+        });
+      } else {
+        toast({
+          title: "Medicine Time!",
+          description: message,
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Medicine Time!",
+        description: message,
+      });
+    }
+  };
 
   const saveSettings = () => {
     localStorage.setItem('robotSettings', JSON.stringify(settings));
@@ -123,10 +170,21 @@ const Index = () => {
     }
   };
 
-  const handleScheduleMedicine = (medicine: { name: string; drawer: 'drawer1' | 'drawer2'; time: string }) => {
+  const handleScheduleMedicine = (medicine: Medicine) => {
     const updatedMedicines = [...scheduledMedicines, medicine];
     setScheduledMedicines(updatedMedicines);
     localStorage.setItem('scheduledMedicines', JSON.stringify(updatedMedicines));
+  };
+
+  const handleDeleteMedicine = (index: number) => {
+    const updatedMedicines = scheduledMedicines.filter((_, i) => i !== index);
+    setScheduledMedicines(updatedMedicines);
+    localStorage.setItem('scheduledMedicines', JSON.stringify(updatedMedicines));
+    
+    toast({
+      title: "Medicine Removed",
+      description: "The scheduled medicine has been removed",
+    });
   };
 
   return (
@@ -273,6 +331,47 @@ const Index = () => {
                       </Button>
                       <div></div>
                     </div>
+                  </CardContent>
+                </Card>
+                
+                <Card>
+                  <CardContent className="p-4">
+                    <Dialog>
+                      <DialogTrigger asChild>
+                        <Button variant="outline" className="w-full flex items-center gap-2">
+                          <List className="h-4 w-4" />
+                          Scheduled Medicines
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>Scheduled Medicines</DialogTitle>
+                        </DialogHeader>
+                        {scheduledMedicines.length === 0 ? (
+                          <p className="text-center text-muted-foreground py-4">No medicines scheduled</p>
+                        ) : (
+                          <div className="space-y-2 max-h-[60vh] overflow-auto">
+                            {scheduledMedicines.map((med, index) => (
+                              <div key={index} className="flex justify-between items-center p-2 border rounded-md">
+                                <div>
+                                  <p className="font-medium">{med.name}</p>
+                                  <p className="text-sm text-muted-foreground">
+                                    {med.time} | {med.drawer === 'drawer1' ? 'Left Drawer' : 'Right Drawer'}
+                                  </p>
+                                </div>
+                                <Button 
+                                  variant="destructive" 
+                                  size="sm"
+                                  onClick={() => handleDeleteMedicine(index)}
+                                >
+                                  Remove
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </DialogContent>
+                    </Dialog>
                   </CardContent>
                 </Card>
               </div>

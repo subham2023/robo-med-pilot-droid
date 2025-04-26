@@ -9,8 +9,10 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { Clock } from "lucide-react";
+import { Clock, Pill } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
+import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
 interface Medicine {
   name: string;
@@ -40,7 +42,14 @@ const MedicineScheduler = ({ onSchedule }: { onSchedule: (medicine: Medicine) =>
     onSchedule(medicine);
     toast({
       title: "Medicine Scheduled",
-      description: `${medicine.name} scheduled for ${medicine.time}`,
+      description: `${medicine.name} scheduled for ${medicine.time} in ${medicine.drawer === 'drawer1' ? 'Left Drawer' : 'Right Drawer'}`,
+    });
+    
+    // Reset form after successful scheduling
+    setMedicine({
+      name: '',
+      drawer: 'drawer1',
+      time: '',
     });
   };
 
@@ -54,31 +63,44 @@ const MedicineScheduler = ({ onSchedule }: { onSchedule: (medicine: Medicine) =>
       </SheetTrigger>
       <SheetContent>
         <SheetHeader>
-          <SheetTitle>Schedule Medicine</SheetTitle>
+          <SheetTitle className="flex items-center gap-2">
+            <Pill className="h-5 w-5" />
+            Schedule Medicine
+          </SheetTitle>
         </SheetHeader>
         <form onSubmit={handleSubmit} className="space-y-4 mt-4">
           <div>
-            <label className="block text-sm font-medium mb-1">Medicine Name</label>
+            <Label htmlFor="medicine-name" className="text-sm font-medium mb-1">Medicine Name</Label>
             <Input
+              id="medicine-name"
               value={medicine.name}
               onChange={(e) => setMedicine({ ...medicine, name: e.target.value })}
               placeholder="Enter medicine name"
             />
           </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">Select Drawer</label>
-            <select
-              className="w-full rounded-md border border-input bg-background px-3 py-2"
-              value={medicine.drawer}
-              onChange={(e) => setMedicine({ ...medicine, drawer: e.target.value as 'drawer1' | 'drawer2' })}
+          
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Select Drawer</Label>
+            <RadioGroup 
+              value={medicine.drawer} 
+              onValueChange={(value) => setMedicine({ ...medicine, drawer: value as 'drawer1' | 'drawer2' })}
+              className="flex gap-4"
             >
-              <option value="drawer1">Left Drawer</option>
-              <option value="drawer2">Right Drawer</option>
-            </select>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="drawer1" id="drawer1" />
+                <Label htmlFor="drawer1" className="cursor-pointer">Left Drawer</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="drawer2" id="drawer2" />
+                <Label htmlFor="drawer2" className="cursor-pointer">Right Drawer</Label>
+              </div>
+            </RadioGroup>
           </div>
+          
           <div>
-            <label className="block text-sm font-medium mb-1">Time</label>
+            <Label htmlFor="medicine-time" className="text-sm font-medium mb-1">Time</Label>
             <Input
+              id="medicine-time"
               type="time"
               value={medicine.time}
               onChange={(e) => setMedicine({ ...medicine, time: e.target.value })}
