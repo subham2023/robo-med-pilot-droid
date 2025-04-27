@@ -74,7 +74,7 @@ const Index = () => {
   }, [scheduledMedicines]);
 
   const showNotification = async (medicine: Medicine) => {
-    const drawerName = medicine.drawer === 'drawer1' ? 'Left Drawer' : 'Right Drawer';
+    const drawerName = medicine.drawer === 'drawer1' ? 'Drawer 1' : 'Drawer 2';
     const message = `Time to take ${medicine.name} from ${drawerName}`;
     
     try {
@@ -214,7 +214,7 @@ const Index = () => {
               <div className="md:col-span-2 flex flex-col space-y-4 justify-center">
                 <Card>
                   <CardContent className="p-4">
-                    <h3 className="text-lg font-medium mb-2 text-center">Left Drawer</h3>
+                    <h3 className="text-lg font-medium mb-2 text-center">Drawer 1</h3>
                     <div className="space-y-2">
                       <Button 
                         className="w-full bg-cyan-600 hover:bg-cyan-700" 
@@ -237,7 +237,7 @@ const Index = () => {
                 
                 <Card>
                   <CardContent className="p-4">
-                    <h3 className="text-lg font-medium mb-2 text-center">Right Drawer</h3>
+                    <h3 className="text-lg font-medium mb-2 text-center">drawer 2</h3>
                     <div className="space-y-2">
                       <Button 
                         className="w-full bg-cyan-600 hover:bg-cyan-700" 
@@ -356,7 +356,7 @@ const Index = () => {
                                 <div>
                                   <p className="font-medium">{med.name}</p>
                                   <p className="text-sm text-muted-foreground">
-                                    {med.time} | {med.drawer === 'drawer1' ? 'Left Drawer' : 'Right Drawer'}
+                                   {med.time} | {med.drawer === 'drawer1' ? 'Drawer 1' : 'Drawer 2'}
                                   </p>
                                 </div>
                                 <Button 
