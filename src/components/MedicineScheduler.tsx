@@ -88,11 +88,11 @@ const MedicineScheduler = ({ onSchedule }: { onSchedule: (medicine: Medicine) =>
             >
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="drawer1" id="drawer1" />
-                <Label htmlFor="drawer1" className="cursor-pointer">Left Drawer</Label>
+                <Label htmlFor="drawer1" className="cursor-pointer">drawer1</Label>
               </div>
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="drawer2" id="drawer2" />
-                <Label htmlFor="drawer2" className="cursor-pointer">Right Drawer</Label>
+                <Label htmlFor="drawer2" className="cursor-pointer">drawer2</Label>
               </div>
             </RadioGroup>
           </div>
