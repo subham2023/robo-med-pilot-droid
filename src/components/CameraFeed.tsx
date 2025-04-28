@@ -12,12 +12,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { 
-  detectCameraType, 
-  getIpWebcamUrls, 
   formatCameraUrl, 
-  getImageUrlFromStreamUrl,
   debugCameraConnection,
-  testCameraConnection
+  testCameraConnection,
+  getIpWebcamUrls
 } from '@/utils/cameraUtils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
@@ -28,7 +26,7 @@ interface CameraFeedProps {
   cameraUrl: string;
   onError?: () => void;
   onUrlChange?: (url: string) => void;
-  loadingTimeout?: number; // Optional timeout in milliseconds
+  loadingTimeout?: number;
 }
 
 interface SuggestedUrl {
@@ -45,7 +43,7 @@ const CameraFeed: React.FC<CameraFeedProps> = ({
   cameraUrl, 
   onError, 
   onUrlChange,
-  loadingTimeout = 10000 // Default 10 second timeout
+  loadingTimeout = 10000
 }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<CameraError | null>(null);

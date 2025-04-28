@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -26,10 +26,7 @@ const Index = () => {
 
   const [activeTab, setActiveTab] = useState("control");
   const [scheduledMedicines, setScheduledMedicines] = useState<Medicine[]>([]);
-  const [cameraLoading, setCameraLoading] = useState(false);
-  
   const { toast } = useToast();
-  const webViewRef = useRef<HTMLIFrameElement>(null);
 
   useEffect(() => {
     const initializeNotifications = async () => {
@@ -177,12 +174,6 @@ const Index = () => {
       });
       return;
     }
-    
-    setCameraLoading(true);
-    
-    setTimeout(() => {
-      setCameraLoading(false);
-    }, 500);
     
     toast({
       title: "Reloading Camera",
@@ -453,18 +444,25 @@ const Index = () => {
                       name="cameraUrl"
                       value={settings.cameraUrl}
                       onChange={handleSettingChange}
-                      placeholder="http://192.168.1.100:81/stream"
+                      placeholder="http://192.168.1.100:8080"
                     />
-                    <p className="text-xs text-gray-500 mt-1">
-                      Example: http://192.168.1.100:81/stream
-                    </p>
-                    <div className="mt-2 text-xs text-amber-600">
-                      <p>Common camera URL formats:</p>
-                      <ul className="list-disc pl-5 mt-1 space-y-1">
-                        <li>ESP32-CAM: http://192.168.x.x:81/stream</li>
-                        <li>IP Webcam Android App: http://192.168.x.x:8080/video</li>
-                        <li>RTSP Stream: http://username:password@192.168.x.x:554/stream</li>
-                      </ul>
+                    <div className="mt-2 text-xs space-y-2">
+                      <p className="text-amber-600 font-medium">IP Webcam Setup:</p>
+                      <ol className="list-decimal pl-5 space-y-1 text-gray-600">
+                        <li>Install "IP Webcam" app from Play Store</li>
+                        <li>Open app and tap "Start server"</li>
+                        <li>Look for IPv4 address (e.g., http://192.168.1.100:8080)</li>
+                        <li>Enter ONLY the base URL (without /video or /browser.html)</li>
+                        <li>Make sure phone and computer are on same WiFi</li>
+                      </ol>
+                      <div className="mt-2 p-2 bg-gray-100 rounded">
+                        <p className="font-medium">Example URLs:</p>
+                        <ul className="list-disc pl-5 mt-1">
+                          <li>✅ http://192.168.1.100:8080</li>
+                          <li>❌ http://192.168.1.100:8080/video</li>
+                          <li>❌ http://192.168.1.100:8080/browser.html</li>
+                        </ul>
+                      </div>
                     </div>
                   </div>
                   
