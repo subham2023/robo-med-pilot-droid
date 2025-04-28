@@ -18,6 +18,8 @@ import {
   debugCameraConnection
 } from '@/utils/cameraUtils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 
 interface CameraFeedProps {
   cameraUrl: string;
@@ -37,6 +39,13 @@ const CameraFeed = ({ cameraUrl, onError, onUrlChange }: CameraFeedProps) => {
   const [debugInfo, setDebugInfo] = useState<Record<string, string>>({});
   const [isDebugOpen, setIsDebugOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(Date.now());
+  const [useCorsBypass, setUseCorsBypass] = useState(false);
+  const [corsProxyUrl, setCorsProxyUrl] = useState("https://corsproxy.io/?");
+  
+  const getProxiedUrl = (url: string): string => {
+    if (!useCorsBypass) return url;
+    return `${corsProxyUrl}${encodeURIComponent(url)}`;
+  };
   
   useEffect(() => {
     if (cameraUrl && cameraUrl.includes(':8080')) {
@@ -107,7 +116,7 @@ const CameraFeed = ({ cameraUrl, onError, onUrlChange }: CameraFeedProps) => {
     }, 10000);
     
     return () => clearTimeout(timeout);
-  }, [cameraUrl, fallbackMode, refreshKey]);
+  }, [cameraUrl, fallbackMode, refreshKey, useCorsBypass]);
 
   const handleLoad = () => {
     console.log("Camera feed loaded successfully in mode:", fallbackMode);
@@ -170,6 +179,15 @@ const CameraFeed = ({ cameraUrl, onError, onUrlChange }: CameraFeedProps) => {
     }
   };
 
+  const handleCorsBypassChange = (checked: boolean) => {
+    setUseCorsBypass(checked);
+    setRefreshKey(Date.now());
+    toast({
+      title: checked ? "CORS Bypass Enabled" : "CORS Bypass Disabled",
+      description: "Reloading camera feed with new settings",
+    });
+  };
+
   if (!cameraUrl) {
     return (
       <div className="flex items-center justify-center h-full bg-gray-900 text-white">
@@ -196,6 +214,15 @@ const CameraFeed = ({ cameraUrl, onError, onUrlChange }: CameraFeedProps) => {
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 z-10 text-white">
           <CameraOff className="h-10 w-10 mb-2 text-red-400" />
           <p>Failed to load camera feed</p>
+          
+          <div className="flex items-center space-x-2 mt-4">
+            <Switch 
+              id="cors-bypass" 
+              checked={useCorsBypass}
+              onCheckedChange={handleCorsBypassChange}
+            />
+            <Label htmlFor="cors-bypass">Try CORS bypass</Label>
+          </div>
           
           {suggestedUrls.length > 0 && (
             <div className="mt-4 w-64">
@@ -259,7 +286,7 @@ const CameraFeed = ({ cameraUrl, onError, onUrlChange }: CameraFeedProps) => {
       {fallbackMode === "iframe" && !error && (
         <iframe
           ref={iframeRef}
-          src={cameraUrl}
+          src={getProxiedUrl(cameraUrl)}
           className="w-full h-full border-0 bg-black"
           onLoad={handleLoad}
           onError={handleError}
@@ -274,7 +301,7 @@ const CameraFeed = ({ cameraUrl, onError, onUrlChange }: CameraFeedProps) => {
       {fallbackMode === "img" && !error && (
         <img
           ref={imgRef}
-          src={`${getImageUrlFromStreamUrl(cameraUrl)}${cameraUrl.includes('?') ? '&' : '?'}_=${refreshKey}`}
+          src={`${getProxiedUrl(getImageUrlFromStreamUrl(cameraUrl))}${cameraUrl.includes('?') ? '&' : '?'}_=${refreshKey}`}
           className="w-full h-full object-contain bg-black"
           onLoad={handleLoad}
           onError={handleError}

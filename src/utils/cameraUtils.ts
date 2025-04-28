@@ -37,7 +37,7 @@ export const testCameraConnection = async (url: string): Promise<{ success: bool
     
     return { 
       success: false, 
-      message: "Failed to connect to camera. This may be due to network issues, incorrect URL, or CORS restrictions." 
+      message: "Failed to connect to camera. This may be due to CORS restrictions, try enabling the CORS bypass option." 
     };
   }
 };
@@ -88,7 +88,8 @@ export const getIpWebcamUrls = (baseIp: string): { name: string; url: string }[]
     { name: "Audio Only", url: `http://${ip}:8080/audio.wav` },
     { name: "Low Resolution", url: `http://${ip}:8080/videofeed` },
     { name: "WebRTC Stream", url: `http://${ip}:8080/webrtc` },
-    { name: "MJPEG with Auth", url: `http://${ip}:8080/video?username=&password=` }
+    { name: "MJPEG with Auth", url: `http://${ip}:8080/video?username=&password=` },
+    { name: "HTML Preview", url: `http://${ip}:8080` }
   ];
 };
 
@@ -145,6 +146,7 @@ export const debugCameraConnection = async (url: string): Promise<{ status: stri
     isMJPEG: formattedUrl.includes('/video') || formattedUrl.includes('/stream') ? "Yes" : "No",
     isIPWebcam: formattedUrl.includes(':8080') ? "Yes" : "No",
     isESP32CAM: formattedUrl.includes(':81/stream') ? "Yes" : "No",
+    corsIssue: "Possible - Try enabling CORS bypass"
   };
   
   try {
