@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -117,7 +116,6 @@ const Index = () => {
     });
     setActiveTab("control");
     
-    // After saving settings, try to reload the camera feed
     reloadCamera();
   };
 
@@ -182,20 +180,28 @@ const Index = () => {
     
     setCameraLoading(true);
     
-    if (webViewRef.current) {
-      webViewRef.current.src = '';
-      
-      setTimeout(() => {
-        if (webViewRef.current) {
-          webViewRef.current.src = settings.cameraUrl;
-        }
-        setCameraLoading(false);
-      }, 500);
-    }
+    setTimeout(() => {
+      setCameraLoading(false);
+    }, 500);
     
     toast({
       title: "Reloading Camera",
       description: "Attempting to connect to camera feed...",
+    });
+  };
+
+  const handleCameraUrlChange = (newUrl: string) => {
+    const updatedSettings = {
+      ...settings,
+      cameraUrl: newUrl
+    };
+    
+    setSettings(updatedSettings);
+    localStorage.setItem('robotSettings', JSON.stringify(updatedSettings));
+    
+    toast({
+      title: "Camera URL Updated",
+      description: "Using new camera stream format",
     });
   };
 
@@ -266,7 +272,7 @@ const Index = () => {
                 
                 <Card>
                   <CardContent className="p-4">
-                    <h3 className="text-lg font-medium mb-2 text-center">drawer 2</h3>
+                    <h3 className="text-lg font-medium mb-2 text-center">Drawer 2</h3>
                     <div className="space-y-2">
                       <Button 
                         className="w-full bg-cyan-600 hover:bg-cyan-700" 
@@ -301,40 +307,11 @@ const Index = () => {
                       </Button>
                     </div>
                     <div className="relative bg-black rounded-md flex-grow min-h-[300px] overflow-hidden">
-                      {/* Enhanced camera view with better error handling */}
-                      {cameraLoading ? (
-                        <div className="absolute inset-0 flex items-center justify-center">
-                          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-cyan-500"></div>
-                        </div>
-                      ) : null}
-                      
-                      <iframe 
-                        ref={webViewRef}
-                        src={settings.cameraUrl || ''} 
-                        className="absolute inset-0 w-full h-full bg-gray-900"
-                        title="IP Camera Stream"
-                        onError={() => {
-                          toast({
-                            title: "Camera Feed Error",
-                            description: "Could not connect to camera. Check URL and network.",
-                            variant: "destructive",
-                          });
-                        }}
-                        allow="camera;microphone"
-                        sandbox="allow-scripts allow-same-origin"
+                      <CameraFeed
+                        cameraUrl={settings.cameraUrl}
+                        onError={() => setCameraLoading(false)}
+                        onUrlChange={handleCameraUrlChange}
                       />
-                      
-                      <div className="absolute inset-0 flex flex-col items-center justify-center text-white bg-black bg-opacity-50 pointer-events-none">
-                        {!settings.cameraUrl ? "Configure camera URL in settings" : ""}
-                        <Button 
-                          className="mt-2 pointer-events-auto"
-                          variant="outline"
-                          onClick={reloadCamera}
-                          style={{ display: settings.cameraUrl ? 'block' : 'none' }}
-                        >
-                          Connect to Camera
-                        </Button>
-                      </div>
                     </div>
                     
                     <div className="mt-4 flex justify-center">

@@ -63,7 +63,7 @@ export const getCommonCameraUrls = (baseIp: string): { name: string; url: string
   return [
     { name: "IP Webcam Android App (MJPEG)", url: `http://${ip}:8080/video` },
     { name: "IP Webcam Android App (JPG)", url: `http://${ip}:8080/photo.jpg` },
-    { name: "IP Webcam Browser View", url: `http://${ip}:8080/browser.html` },
+    { name: "IP Webcam Android App (Browser)", url: `http://${ip}:8080/browser.html` },
     { name: "Generic MJPEG Stream", url: `http://${ip}/mjpeg` },
     { name: "IP Camera HTTP Stream", url: `http://${ip}/videostream.cgi` },
     { name: "ESP32-CAM Default", url: `http://${ip}:81/stream` },
@@ -86,7 +86,9 @@ export const getIpWebcamUrls = (baseIp: string): { name: string; url: string }[]
     { name: "JPG Snapshot", url: `http://${ip}:8080/photo.jpg` },
     { name: "Browser Interface", url: `http://${ip}:8080/browser.html` },
     { name: "Audio Only", url: `http://${ip}:8080/audio.wav` },
-    { name: "Low Resolution", url: `http://${ip}:8080/videofeed` }
+    { name: "Low Resolution", url: `http://${ip}:8080/videofeed` },
+    { name: "WebRTC Stream", url: `http://${ip}:8080/webrtc` },
+    { name: "MJPEG with Auth", url: `http://${ip}:8080/video?username=&password=` }
   ];
 };
 
@@ -98,10 +100,11 @@ export const detectCameraType = (url: string): string => {
   
   // IP Webcam Android app patterns
   if (formattedUrl.includes(':8080')) {
-    if (!formattedUrl.includes('/video')) {
+    if (!formattedUrl.includes('/video') && !formattedUrl.includes('/photo.jpg') && !formattedUrl.includes('/videofeed')) {
       // Extract the base URL and append the correct path
       const baseUrlMatch = formattedUrl.match(/(https?:\/\/[^:/]+(?::\d+)?)/);
       if (baseUrlMatch && baseUrlMatch[1]) {
+        console.log("Detected IP Webcam app, using video endpoint");
         return `${baseUrlMatch[1]}/video`;
       }
     }
@@ -110,3 +113,55 @@ export const detectCameraType = (url: string): string => {
   return formattedUrl;
 };
 
+/**
+ * Get a direct image URL from stream URL for fallback purposes
+ */
+export const getImageUrlFromStreamUrl = (streamUrl: string): string => {
+  const formattedUrl = formatCameraUrl(streamUrl);
+  
+  // IP Webcam app - convert video to snapshot
+  if (formattedUrl.includes(':8080/video')) {
+    return formattedUrl.replace('/video', '/photo.jpg');
+  }
+  
+  // ESP32-CAM - convert stream to snapshot
+  if (formattedUrl.includes(':81/stream')) {
+    return formattedUrl.replace(':81/stream', '/capture');
+  }
+  
+  return formattedUrl;
+};
+
+/**
+ * Debug camera connection and report info
+ */
+export const debugCameraConnection = async (url: string): Promise<{ status: string; info: Record<string, string> }> => {
+  const formattedUrl = formatCameraUrl(url);
+  console.log("Debugging camera connection for:", formattedUrl);
+  
+  const info: Record<string, string> = {
+    originalUrl: url,
+    formattedUrl: formattedUrl,
+    isMJPEG: formattedUrl.includes('/video') || formattedUrl.includes('/stream') ? "Yes" : "No",
+    isIPWebcam: formattedUrl.includes(':8080') ? "Yes" : "No",
+    isESP32CAM: formattedUrl.includes(':81/stream') ? "Yes" : "No",
+  };
+  
+  try {
+    const testResult = await testCameraConnection(formattedUrl);
+    info.connectionTest = testResult.success ? "Success" : "Failed";
+    info.testMessage = testResult.message;
+    
+    return {
+      status: testResult.success ? "success" : "error",
+      info: info
+    };
+  } catch (error) {
+    info.error = String(error);
+    
+    return {
+      status: "error",
+      info: info
+    };
+  }
+};

@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
-import { RefreshCw, List, AlertCircle } from "lucide-react";
+import { RefreshCw, Camera, CameraOff, Loader } from "lucide-react";
 import { 
   Select,
   SelectContent,
@@ -10,7 +10,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { detectCameraType, getIpWebcamUrls, formatCameraUrl } from '@/utils/cameraUtils';
+import { 
+  detectCameraType, 
+  getIpWebcamUrls, 
+  formatCameraUrl, 
+  getImageUrlFromStreamUrl,
+  debugCameraConnection
+} from '@/utils/cameraUtils';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
 interface CameraFeedProps {
   cameraUrl: string;
@@ -22,10 +29,14 @@ const CameraFeed = ({ cameraUrl, onError, onUrlChange }: CameraFeedProps) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
   const [imgError, setImgError] = useState(false);
-  const [fallbackMode, setFallbackMode] = useState<"iframe" | "img">("iframe");
+  const [fallbackMode, setFallbackMode] = useState<"iframe" | "img" | "direct">("iframe");
   const { toast } = useToast();
   const [suggestedUrls, setSuggestedUrls] = useState<{ name: string; url: string }[]>([]);
+  const [debugInfo, setDebugInfo] = useState<Record<string, string>>({});
+  const [isDebugOpen, setIsDebugOpen] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(Date.now());
   
   useEffect(() => {
     if (cameraUrl && cameraUrl.includes(':8080')) {
@@ -44,25 +55,43 @@ const CameraFeed = ({ cameraUrl, onError, onUrlChange }: CameraFeedProps) => {
     setError(false);
     setImgError(false);
     
+    console.log("Camera feed mounting with URL:", cameraUrl);
+    
     // Try to detect the appropriate URL format
     if (cameraUrl) {
       const detectedUrl = detectCameraType(cameraUrl);
       if (detectedUrl !== cameraUrl && onUrlChange) {
         // Notify parent component about the adjusted URL
+        console.log("Detected better camera URL format, updating:", detectedUrl);
         onUrlChange(detectedUrl);
         return; // Will reload with new URL
       }
     }
     
+    // Debugging camera connection
+    if (cameraUrl) {
+      debugCameraConnection(cameraUrl).then(result => {
+        setDebugInfo(result.info);
+        console.log("Camera debug info:", result);
+      });
+    }
+    
     const timeout = setTimeout(() => {
       if (loading) {
         console.log("Camera feed timed out");
-        if (fallbackMode === "iframe" && !imgError) {
+        if (fallbackMode === "iframe") {
           setFallbackMode("img");
           setLoading(true);
           toast({
             title: "Trying fallback method",
             description: "Using direct image mode for camera feed",
+          });
+        } else if (fallbackMode === "img" && !imgError) {
+          setFallbackMode("direct");
+          setLoading(true);
+          toast({
+            title: "Trying final fallback method",
+            description: "Using direct browser access for camera feed",
           });
         } else {
           setError(true);
@@ -78,23 +107,26 @@ const CameraFeed = ({ cameraUrl, onError, onUrlChange }: CameraFeedProps) => {
     }, 10000);
     
     return () => clearTimeout(timeout);
-  }, [cameraUrl, fallbackMode]);
+  }, [cameraUrl, fallbackMode, refreshKey]);
 
   const handleLoad = () => {
-    console.log("Camera feed loaded successfully");
+    console.log("Camera feed loaded successfully in mode:", fallbackMode);
     setLoading(false);
     setError(false);
   };
 
   const handleError = () => {
-    console.log("Camera feed error detected");
+    console.log("Camera feed error detected in mode:", fallbackMode);
     
     if (fallbackMode === "iframe") {
       // Try image mode next
       setFallbackMode("img");
       setLoading(true);
-    } else {
+    } else if (fallbackMode === "img") {
       setImgError(true);
+      setFallbackMode("direct");
+      setLoading(true);
+    } else {
       setLoading(false);
       setError(true);
       if (onError) onError();
@@ -113,15 +145,12 @@ const CameraFeed = ({ cameraUrl, onError, onUrlChange }: CameraFeedProps) => {
     
     // Try iframe mode again
     setFallbackMode("iframe");
+    setRefreshKey(Date.now());
     
-    if (iframeRef.current) {
-      iframeRef.current.src = '';
-      setTimeout(() => {
-        if (iframeRef.current) {
-          iframeRef.current.src = cameraUrl;
-        }
-      }, 300);
-    }
+    toast({
+      title: "Reloading Camera",
+      description: "Attempting to reconnect to camera feed",
+    });
   };
   
   const handleSelectUrl = (urlValue: string) => {
@@ -134,12 +163,18 @@ const CameraFeed = ({ cameraUrl, onError, onUrlChange }: CameraFeedProps) => {
       });
     }
   };
+  
+  const openInNewTab = () => {
+    if (cameraUrl) {
+      window.open(formatCameraUrl(cameraUrl), '_blank');
+    }
+  };
 
   if (!cameraUrl) {
     return (
       <div className="flex items-center justify-center h-full bg-gray-900 text-white">
         <div className="text-center">
-          <AlertCircle className="mx-auto h-8 w-8 mb-2" />
+          <CameraOff className="mx-auto h-8 w-8 mb-2" />
           <p>No camera URL configured</p>
         </div>
       </div>
@@ -150,12 +185,16 @@ const CameraFeed = ({ cameraUrl, onError, onUrlChange }: CameraFeedProps) => {
     <div className="relative w-full h-full">
       {loading && (
         <div className="absolute inset-0 flex items-center justify-center bg-gray-900 z-10">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-cyan-500"></div>
+          <div className="flex flex-col items-center">
+            <Loader className="animate-spin h-12 w-12 mb-2 text-cyan-500" />
+            <p className="text-white text-sm">Connecting to camera...</p>
+          </div>
         </div>
       )}
       
       {error && (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 z-10 text-white">
+          <CameraOff className="h-10 w-10 mb-2 text-red-400" />
           <p>Failed to load camera feed</p>
           
           {suggestedUrls.length > 0 && (
@@ -186,16 +225,33 @@ const CameraFeed = ({ cameraUrl, onError, onUrlChange }: CameraFeedProps) => {
               Retry
             </Button>
             
-            {fallbackMode === "img" && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setFallbackMode("iframe")}
-              >
-                <List className="h-4 w-4 mr-2" />
-                Try iframe
-              </Button>
-            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={openInNewTab}
+            >
+              <Camera className="h-4 w-4 mr-2" />
+              Open directly
+            </Button>
+            
+            <Dialog open={isDebugOpen} onOpenChange={setIsDebugOpen}>
+              <DialogTrigger asChild>
+                <Button variant="secondary" size="sm">Debug Info</Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Camera Debug Information</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-2 max-h-[60vh] overflow-auto">
+                  {Object.entries(debugInfo).map(([key, value]) => (
+                    <div key={key} className="grid grid-cols-2 gap-2 border-b pb-1">
+                      <span className="font-medium">{key}</span>
+                      <span className="overflow-hidden text-ellipsis">{value}</span>
+                    </div>
+                  ))}
+                </div>
+              </DialogContent>
+            </Dialog>
           </div>
         </div>
       )}
@@ -204,23 +260,41 @@ const CameraFeed = ({ cameraUrl, onError, onUrlChange }: CameraFeedProps) => {
         <iframe
           ref={iframeRef}
           src={cameraUrl}
-          className="w-full h-full border-0"
+          className="w-full h-full border-0 bg-black"
           onLoad={handleLoad}
           onError={handleError}
+          key={`iframe-${refreshKey}`}
           title="Camera Feed"
           allow="camera;microphone"
           sandbox="allow-scripts allow-same-origin"
+          loading="eager"
         />
       )}
       
       {fallbackMode === "img" && !error && (
         <img
-          src={`${formatCameraUrl(cameraUrl)}${cameraUrl.includes('?') ? '&' : '?'}${Date.now()}`}
+          ref={imgRef}
+          src={`${getImageUrlFromStreamUrl(cameraUrl)}${cameraUrl.includes('?') ? '&' : '?'}_=${refreshKey}`}
           className="w-full h-full object-contain bg-black"
           onLoad={handleLoad}
           onError={handleError}
           alt="Camera Feed"
+          key={`img-${refreshKey}`}
         />
+      )}
+      
+      {fallbackMode === "direct" && !error && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 text-white">
+          <p>Using direct browser access</p>
+          <Button 
+            variant="outline" 
+            className="mt-2"
+            onClick={openInNewTab}
+          >
+            <Camera className="h-4 w-4 mr-2" />
+            Open Camera in New Tab
+          </Button>
+        </div>
       )}
     </div>
   );
