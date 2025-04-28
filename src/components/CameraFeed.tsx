@@ -39,11 +39,28 @@ const CameraFeed = ({ cameraUrl, onError, onUrlChange }: CameraFeedProps) => {
   const [isDebugOpen, setIsDebugOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(Date.now());
   const [useCorsBypass, setUseCorsBypass] = useState(false);
-  const [corsProxyUrl, setCorsProxyUrl] = useState("https://corsproxy.io/?");
+  const [videoMode, setVideoMode] = useState<'direct' | 'mjpeg' | 'img'>('direct');
+  const corsProxyUrl = "https://corsproxy.io/?";
   
   const getProxiedUrl = (url: string): string => {
     if (!useCorsBypass) return url;
     return `${corsProxyUrl}${encodeURIComponent(url)}`;
+  };
+  
+  const getVideoUrl = () => {
+    if (!cameraUrl) return '';
+    const baseUrl = cameraUrl.endsWith('/') ? cameraUrl.slice(0, -1) : cameraUrl;
+    
+    switch (videoMode) {
+      case 'direct':
+        return getProxiedUrl(`${baseUrl}/video`);
+      case 'mjpeg':
+        return getProxiedUrl(`${baseUrl}/videofeed`);
+      case 'img':
+        return `${getProxiedUrl(`${baseUrl}/photo.jpg`)}?_=${Date.now()}`;
+      default:
+        return getProxiedUrl(`${baseUrl}/video`);
+    }
   };
   
   useEffect(() => {
@@ -105,29 +122,26 @@ const CameraFeed = ({ cameraUrl, onError, onUrlChange }: CameraFeedProps) => {
     setError(false);
   };
 
-  const handleError = (e: any) => {
-    console.log("Camera feed error detected in mode:", fallbackMode);
-    console.error("Error details:", e);
+  const handleError = () => {
+    console.log("Video feed error in mode:", videoMode);
     
-    if (fallbackMode === "iframe") {
-      console.log("iframe mode failed, trying image mode");
-      setFallbackMode("img");
-      setLoading(true);
-    } else if (fallbackMode === "img") {
-      console.log("image mode failed, trying direct mode");
-      setImgError(true);
-      setFallbackMode("direct");
-      setLoading(true);
-    } else {
-      console.log("all modes failed");
-      setLoading(false);
-      setError(true);
-      if (onError) onError();
+    // Try different video modes on error
+    if (videoMode === 'direct') {
+      setVideoMode('mjpeg');
       toast({
-        title: "Camera Connection Failed",
-        description: "Unable to load camera feed. Please check URL and connection.",
-        variant: "destructive",
+        title: "Trying alternative stream format",
+        description: "Switching to MJPEG stream",
       });
+    } else if (videoMode === 'mjpeg') {
+      setVideoMode('img');
+      toast({
+        title: "Trying fallback method",
+        description: "Using snapshot mode",
+      });
+    } else {
+      setError(true);
+      setLoading(false);
+      if (onError) onError();
     }
   };
 
@@ -161,15 +175,6 @@ const CameraFeed = ({ cameraUrl, onError, onUrlChange }: CameraFeedProps) => {
     if (cameraUrl) {
       window.open(formatCameraUrl(cameraUrl), '_blank');
     }
-  };
-
-  const handleCorsBypassChange = (checked: boolean) => {
-    setUseCorsBypass(checked);
-    setRefreshKey(Date.now());
-    toast({
-      title: checked ? "CORS Bypass Enabled" : "CORS Bypass Disabled",
-      description: "Reloading camera feed with new settings",
-    });
   };
 
   if (!cameraUrl) {
@@ -206,6 +211,24 @@ const CameraFeed = ({ cameraUrl, onError, onUrlChange }: CameraFeedProps) => {
               <li>Phone and computer are on same network</li>
               <li>Camera URL is correct</li>
             </ul>
+          </div>
+
+          <div className="flex items-center space-x-2 mt-4">
+            <Switch 
+              id="cors-bypass" 
+              checked={useCorsBypass}
+              onCheckedChange={(checked) => {
+                setUseCorsBypass(checked);
+                setError(false);
+                setLoading(true);
+                setVideoMode('direct');
+                toast({
+                  title: checked ? "CORS Bypass Enabled" : "CORS Bypass Disabled",
+                  description: "Retrying camera connection...",
+                });
+              }}
+            />
+            <Label htmlFor="cors-bypass">Try CORS bypass</Label>
           </div>
           
           <div className="flex mt-4 gap-2">
@@ -251,23 +274,42 @@ const CameraFeed = ({ cameraUrl, onError, onUrlChange }: CameraFeedProps) => {
       
       {!error && (
         <div className="w-full h-full flex flex-col">
-          {/* Direct video stream */}
-          <img 
-            src={`${cameraUrl}/video`}
-            className="w-full h-full object-contain bg-black"
-            onLoad={handleLoad}
-            onError={handleError}
-            alt="Camera Feed"
-          />
+          {videoMode === 'img' ? (
+            // Snapshot mode - refreshes every second
+            <img 
+              src={getVideoUrl()}
+              className="w-full h-full object-contain bg-black"
+              onLoad={handleLoad}
+              onError={handleError}
+              alt="Camera Feed"
+              key={Date.now()} // Force refresh
+            />
+          ) : (
+            // Video stream mode
+            <img 
+              src={getVideoUrl()}
+              className="w-full h-full object-contain bg-black"
+              onLoad={handleLoad}
+              onError={handleError}
+              alt="Camera Feed"
+            />
+          )}
           
           {/* Controls */}
           <div className="absolute bottom-4 left-4 right-4 flex justify-center gap-2 bg-black/50 p-2 rounded">
             <Button
               variant="outline"
               size="sm"
-              onClick={() => window.open(`${cameraUrl}/photo.jpg`, '_blank')}
+              onClick={() => {
+                const nextMode = videoMode === 'direct' ? 'mjpeg' : videoMode === 'mjpeg' ? 'img' : 'direct';
+                setVideoMode(nextMode);
+                toast({
+                  title: "Changing Video Mode",
+                  description: `Switching to ${nextMode.toUpperCase()} mode`,
+                });
+              }}
             >
-              Take Photo
+              Change Video Mode ({videoMode.toUpperCase()})
             </Button>
             <Button
               variant="outline"
