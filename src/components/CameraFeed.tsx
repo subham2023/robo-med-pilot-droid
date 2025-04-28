@@ -47,7 +47,6 @@ const CameraFeed: React.FC<CameraFeedProps> = ({
 }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<CameraError | null>(null);
-  const [imgError, setImgError] = useState(false);
   const { toast } = useToast();
   const [suggestedUrls, setSuggestedUrls] = useState<SuggestedUrl[]>([]);
   const [debugInfo, setDebugInfo] = useState<Record<string, string>>({});
@@ -62,7 +61,6 @@ const CameraFeed: React.FC<CameraFeedProps> = ({
   useEffect(() => {
     setLoading(true);
     setError(null);
-    setImgError(false);
     setRetryCount(0);
     setVideoMode('direct');
   }, [cameraUrl]);
@@ -102,7 +100,6 @@ const CameraFeed: React.FC<CameraFeedProps> = ({
 
     setLoading(true);
     setError(null);
-    setImgError(false);
     setRetryCount(0);
 
     // Clear any existing timeout
@@ -176,7 +173,6 @@ const CameraFeed: React.FC<CameraFeedProps> = ({
   const reloadCamera = (): void => {
     setLoading(true);
     setError(null);
-    setImgError(false);
     setRetryCount(0);
     setVideoMode('direct');
     
@@ -203,7 +199,7 @@ const CameraFeed: React.FC<CameraFeedProps> = ({
     }
   };
 
-  const handleImageError = (event: React.SyntheticEvent<HTMLImageElement, Event>) => {
+  const handleImageError = () => {
     handleError("Failed to load camera feed");
   };
 
