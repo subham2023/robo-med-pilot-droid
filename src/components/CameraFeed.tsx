@@ -204,8 +204,7 @@ const CameraFeed = ({ cameraUrl, onError, onUrlChange }: CameraFeedProps) => {
             <ul className="text-sm list-disc pl-5 space-y-1">
               <li>IP Webcam app is running</li>
               <li>Phone and computer are on same network</li>
-              <li>Camera URL is correct (e.g., http://192.168.x.x:8080)</li>
-              <li>Try opening URL in browser first</li>
+              <li>Camera URL is correct</li>
             </ul>
           </div>
           
@@ -251,19 +250,34 @@ const CameraFeed = ({ cameraUrl, onError, onUrlChange }: CameraFeedProps) => {
       )}
       
       {!error && (
-        <iframe
-          ref={iframeRef}
-          src={cameraUrl}
-          className="w-full h-full border-0 bg-black"
-          onLoad={handleLoad}
-          onError={handleError}
-          key={`iframe-${refreshKey}`}
-          title="Camera Feed"
-          allow="camera;microphone;display-capture;fullscreen;autoplay"
-          sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads allow-presentation"
-          loading="eager"
-          style={{ width: '100%', height: '100%', minHeight: '400px' }}
-        />
+        <div className="w-full h-full flex flex-col">
+          {/* Direct video stream */}
+          <img 
+            src={`${cameraUrl}/video`}
+            className="w-full h-full object-contain bg-black"
+            onLoad={handleLoad}
+            onError={handleError}
+            alt="Camera Feed"
+          />
+          
+          {/* Controls */}
+          <div className="absolute bottom-4 left-4 right-4 flex justify-center gap-2 bg-black/50 p-2 rounded">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => window.open(`${cameraUrl}/photo.jpg`, '_blank')}
+            >
+              Take Photo
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => window.open(`${cameraUrl}/browser.html`, '_blank')}
+            >
+              Advanced Controls
+            </Button>
+          </div>
+        </div>
       )}
     </div>
   );
