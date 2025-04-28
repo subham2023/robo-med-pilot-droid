@@ -54,10 +54,10 @@ const CameraFeed: React.FC<CameraFeedProps> = ({
   const [debugInfo, setDebugInfo] = useState<Record<string, string>>({});
   const [useCorsBypass, setUseCorsBypass] = useState(false);
   const [videoMode, setVideoMode] = useState<VideoMode>('direct');
-  const corsProxyUrl = "https://corsproxy.io/?";
   const [retryCount, setRetryCount] = useState(0);
   const maxRetries = 3;
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const corsProxyUrl = "https://corsproxy.io/?";
   
   // Reset state when camera URL changes
   useEffect(() => {
