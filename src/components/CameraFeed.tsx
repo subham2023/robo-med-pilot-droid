@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
@@ -53,6 +52,8 @@ const CameraFeed = ({ cameraUrl, onError, onUrlChange }: CameraFeedProps) => {
       const baseIp = cameraUrl.match(/\d+\.\d+\.\d+\.\d+/)?.pop() || "";
       if (baseIp) {
         setSuggestedUrls(getIpWebcamUrls(baseIp));
+        // Automatically enable CORS bypass for IP Webcam
+        setUseCorsBypass(true);
       }
     } else {
       setSuggestedUrls([]);
@@ -82,6 +83,16 @@ const CameraFeed = ({ cameraUrl, onError, onUrlChange }: CameraFeedProps) => {
       debugCameraConnection(cameraUrl).then(result => {
         setDebugInfo(result.info);
         console.log("Camera debug info:", result);
+        
+        // If connection test failed, try enabling CORS bypass
+        if (result.status === "error" && !useCorsBypass) {
+          setUseCorsBypass(true);
+          setRefreshKey(Date.now());
+          toast({
+            title: "Enabling CORS Bypass",
+            description: "Automatically enabling CORS bypass to improve connection",
+          });
+        }
       });
     }
     

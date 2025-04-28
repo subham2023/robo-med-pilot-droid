@@ -1,4 +1,3 @@
-
 /**
  * Utility functions for camera connectivity and debugging
  */
@@ -101,14 +100,20 @@ export const detectCameraType = (url: string): string => {
   
   // IP Webcam Android app patterns
   if (formattedUrl.includes(':8080')) {
+    // If URL doesn't end with a specific endpoint, try to determine the best one
     if (!formattedUrl.includes('/video') && !formattedUrl.includes('/photo.jpg') && !formattedUrl.includes('/videofeed')) {
-      // Extract the base URL and append the correct path
+      // Extract the base URL and append the video endpoint
       const baseUrlMatch = formattedUrl.match(/(https?:\/\/[^:/]+(?::\d+)?)/);
       if (baseUrlMatch && baseUrlMatch[1]) {
         console.log("Detected IP Webcam app, using video endpoint");
         return `${baseUrlMatch[1]}/video`;
       }
     }
+  }
+  
+  // If URL ends with just the IP:port, append /video
+  if (/^https?:\/\/\d+\.\d+\.\d+\.\d+:\d+$/.test(formattedUrl)) {
+    return `${formattedUrl}/video`;
   }
   
   return formattedUrl;
@@ -123,6 +128,11 @@ export const getImageUrlFromStreamUrl = (streamUrl: string): string => {
   // IP Webcam app - convert video to snapshot
   if (formattedUrl.includes(':8080/video')) {
     return formattedUrl.replace('/video', '/photo.jpg');
+  }
+  
+  // If URL is just the base IP:port, use photo.jpg
+  if (/^https?:\/\/\d+\.\d+\.\d+\.\d+:\d+$/.test(formattedUrl)) {
+    return `${formattedUrl}/photo.jpg`;
   }
   
   // ESP32-CAM - convert stream to snapshot
