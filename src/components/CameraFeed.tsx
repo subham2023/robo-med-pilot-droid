@@ -48,12 +48,14 @@ const CameraFeed = ({ cameraUrl, onError, onUrlChange }: CameraFeedProps) => {
   
   useEffect(() => {
     if (cameraUrl && cameraUrl.includes(':8080')) {
-      // This looks like an IP Webcam URL, get suggested formats
-      const baseIp = cameraUrl.match(/\d+\.\d+\.\d+\.\d+/)?.pop() || "";
+      // For IP Webcam, get the base URL without any endpoints
+      const baseIp = cameraUrl.match(/(https?:\/\/[^:/]+(?::\d+)?)/)?.[1] || "";
       if (baseIp) {
+        // Use the browser interface URL
+        if (onUrlChange) {
+          onUrlChange(`${baseIp}/browser.html`);
+        }
         setSuggestedUrls(getIpWebcamUrls(baseIp));
-        // Automatically enable CORS bypass for IP Webcam
-        setUseCorsBypass(true);
       }
     } else {
       setSuggestedUrls([]);
@@ -67,18 +69,9 @@ const CameraFeed = ({ cameraUrl, onError, onUrlChange }: CameraFeedProps) => {
     
     console.log("Camera feed mounting with URL:", cameraUrl);
     
-    // Try to detect the appropriate URL format
-    if (cameraUrl) {
-      // Log the URL format detection
-      console.log("Detecting camera type for URL:", cameraUrl);
-      const detectedUrl = detectCameraType(cameraUrl);
-      console.log("Detected URL format:", detectedUrl);
-      
-      if (detectedUrl !== cameraUrl && onUrlChange) {
-        console.log("URL format changed, updating to:", detectedUrl);
-        onUrlChange(detectedUrl);
-        return;
-      }
+    // For IP Webcam browser interface, always use iframe mode
+    if (cameraUrl && cameraUrl.includes('/browser.html')) {
+      setFallbackMode("iframe");
     }
     
     // Debugging camera connection
@@ -86,77 +79,25 @@ const CameraFeed = ({ cameraUrl, onError, onUrlChange }: CameraFeedProps) => {
       debugCameraConnection(cameraUrl).then(result => {
         setDebugInfo(result.info);
         console.log("Camera debug info:", result);
-        
-        // If connection test failed, try enabling CORS bypass
-        if (result.status === "error" && !useCorsBypass) {
-          console.log("Connection failed, enabling CORS bypass");
-          setUseCorsBypass(true);
-          setRefreshKey(Date.now());
-          toast({
-            title: "Enabling CORS Bypass",
-            description: "Automatically enabling CORS bypass to improve connection",
-          });
-        }
       });
     }
     
-    // Add network status check
-    const checkNetworkStatus = () => {
-      const isOnline = navigator.onLine;
-      console.log("Network status - Online:", isOnline);
-      if (!isOnline) {
+    const timeout = setTimeout(() => {
+      if (loading) {
+        console.log("Camera feed timed out");
         setError(true);
+        setLoading(false);
+        if (onError) onError();
         toast({
-          title: "Network Error",
-          description: "Please check your internet connection",
+          title: "Camera Connection Failed",
+          description: "Unable to load camera feed. Please check URL and connection.",
           variant: "destructive",
         });
       }
-    };
-    
-    window.addEventListener('online', checkNetworkStatus);
-    window.addEventListener('offline', checkNetworkStatus);
-    checkNetworkStatus();
-    
-    const timeout = setTimeout(() => {
-      if (loading) {
-        console.log("Camera feed timed out, current mode:", fallbackMode);
-        if (fallbackMode === "iframe") {
-          console.log("Switching to image mode");
-          setFallbackMode("img");
-          setLoading(true);
-          toast({
-            title: "Trying fallback method",
-            description: "Using direct image mode for camera feed",
-          });
-        } else if (fallbackMode === "img" && !imgError) {
-          console.log("Switching to direct mode");
-          setFallbackMode("direct");
-          setLoading(true);
-          toast({
-            title: "Trying final fallback method",
-            description: "Using direct browser access for camera feed",
-          });
-        } else {
-          console.log("All fallback modes failed");
-          setError(true);
-          setLoading(false);
-          if (onError) onError();
-          toast({
-            title: "Camera Connection Failed",
-            description: "Unable to load camera feed after multiple attempts",
-            variant: "destructive",
-          });
-        }
-      }
     }, 10000);
     
-    return () => {
-      clearTimeout(timeout);
-      window.removeEventListener('online', checkNetworkStatus);
-      window.removeEventListener('offline', checkNetworkStatus);
-    };
-  }, [cameraUrl, fallbackMode, refreshKey, useCorsBypass]);
+    return () => clearTimeout(timeout);
+  }, [cameraUrl, refreshKey]);
 
   const handleLoad = () => {
     console.log("Camera feed loaded successfully in mode:", fallbackMode);
@@ -258,38 +199,20 @@ const CameraFeed = ({ cameraUrl, onError, onUrlChange }: CameraFeedProps) => {
           <CameraOff className="h-10 w-10 mb-2 text-red-400" />
           <p>Failed to load camera feed</p>
           
-          <div className="flex items-center space-x-2 mt-4">
-            <Switch 
-              id="cors-bypass" 
-              checked={useCorsBypass}
-              onCheckedChange={handleCorsBypassChange}
-            />
-            <Label htmlFor="cors-bypass">Try CORS bypass</Label>
+          <div className="mt-4 w-64">
+            <p className="text-sm mb-2">Make sure:</p>
+            <ul className="text-sm list-disc pl-5 space-y-1">
+              <li>IP Webcam app is running</li>
+              <li>Phone and computer are on same network</li>
+              <li>Camera URL is correct</li>
+            </ul>
           </div>
-          
-          {suggestedUrls.length > 0 && (
-            <div className="mt-4 w-64">
-              <p className="text-sm mb-2">Try a different format:</p>
-              <Select onValueChange={handleSelectUrl}>
-                <SelectTrigger className="w-full bg-gray-800">
-                  <SelectValue placeholder="Select stream format" />
-                </SelectTrigger>
-                <SelectContent>
-                  {suggestedUrls.map((item, index) => (
-                    <SelectItem key={index} value={item.url}>
-                      {item.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
           
           <div className="flex mt-4 gap-2">
             <Button 
               variant="outline" 
               size="sm" 
-              onClick={reloadCamera} 
+              onClick={reloadCamera}
             >
               <RefreshCw className="h-4 w-4 mr-2" />
               Retry
@@ -304,7 +227,7 @@ const CameraFeed = ({ cameraUrl, onError, onUrlChange }: CameraFeedProps) => {
               Open directly
             </Button>
             
-            <Dialog open={isDebugOpen} onOpenChange={setIsDebugOpen}>
+            <Dialog>
               <DialogTrigger asChild>
                 <Button variant="secondary" size="sm">Debug Info</Button>
               </DialogTrigger>
@@ -326,45 +249,19 @@ const CameraFeed = ({ cameraUrl, onError, onUrlChange }: CameraFeedProps) => {
         </div>
       )}
       
-      {fallbackMode === "iframe" && !error && (
+      {!error && (
         <iframe
           ref={iframeRef}
-          src={getProxiedUrl(cameraUrl)}
+          src={cameraUrl}
           className="w-full h-full border-0 bg-black"
           onLoad={handleLoad}
           onError={handleError}
           key={`iframe-${refreshKey}`}
           title="Camera Feed"
           allow="camera;microphone"
-          sandbox="allow-scripts allow-same-origin"
+          sandbox="allow-scripts allow-same-origin allow-forms"
           loading="eager"
         />
-      )}
-      
-      {fallbackMode === "img" && !error && (
-        <img
-          ref={imgRef}
-          src={`${getProxiedUrl(getImageUrlFromStreamUrl(cameraUrl))}${cameraUrl.includes('?') ? '&' : '?'}_=${refreshKey}`}
-          className="w-full h-full object-contain bg-black"
-          onLoad={handleLoad}
-          onError={handleError}
-          alt="Camera Feed"
-          key={`img-${refreshKey}`}
-        />
-      )}
-      
-      {fallbackMode === "direct" && !error && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 text-white">
-          <p>Using direct browser access</p>
-          <Button 
-            variant="outline" 
-            className="mt-2"
-            onClick={openInNewTab}
-          >
-            <Camera className="h-4 w-4 mr-2" />
-            Open Camera in New Tab
-          </Button>
-        </div>
       )}
     </div>
   );
