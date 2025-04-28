@@ -98,19 +98,25 @@ const CameraFeed: React.FC<CameraFeedProps> = ({
   const getVideoUrl = (): string => {
     if (!cameraUrl) return '';
     
-    // Clean up the base URL
-    const baseUrl = cameraUrl.endsWith('/') ? cameraUrl.slice(0, -1) : cameraUrl;
+    // Clean up the base URL and ensure proper formatting
+    let baseUrl = cameraUrl.trim();
+    if (baseUrl.endsWith('/')) {
+      baseUrl = baseUrl.slice(0, -1);
+    }
+    if (!baseUrl.startsWith('http://') && !baseUrl.startsWith('https://')) {
+      baseUrl = `http://${baseUrl}`;
+    }
     
     // IP Webcam specific endpoints
     if (baseUrl.includes(':8080')) {
       switch (videoMode) {
-        case 'direct':
-          return getProxiedUrl(`${baseUrl}/video`);
         case 'mjpeg':
-          return getProxiedUrl(`${baseUrl}/videofeed`);
+          return getProxiedUrl(`${baseUrl}/video`); // Try video endpoint for better compatibility
+        case 'direct':
+          return getProxiedUrl(`${baseUrl}/videofeed`); // Try videofeed for direct mode
         case 'img':
-          // Add timestamp to prevent caching
-          return `${getProxiedUrl(`${baseUrl}/shot.jpg`)}?_=${Date.now()}`;
+          // Use shot.jpg for still images with cache busting
+          return `${getProxiedUrl(`${baseUrl}/shot.jpg`)}?t=${Date.now()}`;
         default:
           return getProxiedUrl(`${baseUrl}/video`);
       }
@@ -123,7 +129,7 @@ const CameraFeed: React.FC<CameraFeedProps> = ({
       case 'mjpeg':
         return getProxiedUrl(`${baseUrl}/videofeed`);
       case 'img':
-        return `${getProxiedUrl(`${baseUrl}/photo.jpg`)}?_=${Date.now()}`;
+        return `${getProxiedUrl(`${baseUrl}/photo.jpg`)}?t=${Date.now()}`;
       default:
         return getProxiedUrl(`${baseUrl}/video`);
     }
@@ -143,13 +149,26 @@ const CameraFeed: React.FC<CameraFeedProps> = ({
 
     // Set new loading timeout
     const timeoutId = setTimeout(() => {
-      const timeoutError = {
-        type: 'timeout',
-        message: 'Camera connection timed out. Please check your network connection and camera status.'
-      };
-      setError(timeoutError);
-      setLoading(false);
-      if (onError) onError(timeoutError.message);
+      if (retryCount < maxRetries) {
+        // Try next video mode if current one fails
+        setRetryCount(prev => prev + 1);
+        const modes: VideoMode[] = ['direct', 'mjpeg', 'img'];
+        const currentIndex = modes.indexOf(videoMode);
+        const nextMode = modes[(currentIndex + 1) % modes.length];
+        setVideoMode(nextMode);
+        toast({
+          title: "Trying different mode",
+          description: `Switching to ${nextMode.toUpperCase()} mode`,
+        });
+      } else {
+        const timeoutError = {
+          type: 'timeout',
+          message: 'Camera connection timed out. Please check your network connection and camera status.'
+        };
+        setError(timeoutError);
+        setLoading(false);
+        if (onError) onError(timeoutError.message);
+      }
     }, loadingTimeout);
 
     timeoutRef.current = timeoutId;
@@ -175,14 +194,29 @@ const CameraFeed: React.FC<CameraFeedProps> = ({
 
     } catch (error) {
       console.error("Camera initialization error:", error);
-      setError({
-        type: error instanceof Error && error.message.includes('CORS') ? 'cors' : 'connection',
-        message: error instanceof Error ? error.message : 'Failed to connect to camera'
-      });
-      setLoading(false);
-      if (onError) onError(error instanceof Error ? error.message : 'Failed to connect to camera');
+      const errorMessage = error instanceof Error ? error.message : 'Failed to connect to camera';
+      
+      if (retryCount < maxRetries) {
+        // Try next video mode if current one fails
+        setRetryCount(prev => prev + 1);
+        const modes: VideoMode[] = ['direct', 'mjpeg', 'img'];
+        const currentIndex = modes.indexOf(videoMode);
+        const nextMode = modes[(currentIndex + 1) % modes.length];
+        setVideoMode(nextMode);
+        toast({
+          title: "Connection failed",
+          description: `Trying ${nextMode.toUpperCase()} mode...`,
+        });
+      } else {
+        setError({
+          type: error instanceof Error && error.message.includes('CORS') ? 'cors' : 'connection',
+          message: errorMessage
+        });
+        setLoading(false);
+        if (onError) onError(errorMessage);
+      }
     }
-  }, [cameraUrl, loadingTimeout, onError]);
+  }, [cameraUrl, loadingTimeout, onError, retryCount, videoMode, maxRetries]);
 
   // Initialize camera when dependencies change
   useEffect(() => {
