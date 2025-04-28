@@ -24,7 +24,7 @@ import { AspectRatio } from "@/components/ui/aspect-ratio";
 
 interface CameraFeedProps {
   cameraUrl: string;
-  onError?: () => void;
+  onError?: (message: string) => void;
   onUrlChange?: (url: string) => void;
   loadingTimeout?: number;
 }
@@ -35,7 +35,7 @@ interface SuggestedUrl {
 }
 
 interface CameraError {
-  type: 'timeout' | 'connection' | 'cors' | 'unknown';
+  type: string;
   message: string;
 }
 
@@ -45,10 +45,15 @@ const CameraFeed: React.FC<CameraFeedProps> = ({
   onUrlChange,
   loadingTimeout = 10000
 }) => {
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<CameraError | null>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<CameraError | null>(null);
+  const [bypassCors, setBypassCors] = useState(false);
+  const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState("");
+  const [toastType, setToastType] = useState<"success" | "error">("success");
   const [imgError, setImgError] = useState(false);
   const [fallbackMode, setFallbackMode] = useState<"iframe" | "img" | "direct">("iframe");
   const { toast } = useToast();
@@ -123,7 +128,7 @@ const CameraFeed: React.FC<CameraFeedProps> = ({
           message: 'Camera connection timed out. Please check your network connection and camera status.'
         });
         setLoading(false);
-        if (onError) onError();
+        if (onError) onError(error?.message || '');
       }
     }, loadingTimeout);
 
@@ -153,7 +158,7 @@ const CameraFeed: React.FC<CameraFeedProps> = ({
         message: error instanceof Error ? error.message : 'Failed to connect to camera'
       });
       setLoading(false);
-      if (onError) onError();
+      if (onError) onError(error instanceof Error ? error.message : 'Failed to connect to camera');
     }
   }, [cameraUrl, loading, loadingTimeout, onError]);
 
@@ -169,45 +174,11 @@ const CameraFeed: React.FC<CameraFeedProps> = ({
     setRetryCount(0);
   };
 
-  const handleError = (): void => {
-    console.log("Video feed error in mode:", videoMode);
-    
-    if (retryCount < maxRetries) {
-      setRetryCount((prev: number) => prev + 1);
-      
-      // Try different video modes on error
-      if (videoMode === 'direct') {
-        setVideoMode('mjpeg');
-        toast({
-          title: "Trying alternative stream format",
-          description: "Switching to MJPEG stream",
-        });
-      } else if (videoMode === 'mjpeg') {
-        setVideoMode('img');
-        toast({
-          title: "Trying fallback method",
-          description: "Using snapshot mode",
-        });
-      } else {
-        setError({
-          type: 'connection',
-          message: 'Failed to load camera feed after trying all available modes'
-        });
-        setLoading(false);
-        if (onError) onError();
-      }
-    } else {
-      setError({
-        type: 'connection',
-        message: 'Unable to connect after multiple attempts'
-      });
-      setLoading(false);
-      if (onError) onError();
-      toast({
-        title: "Camera Connection Failed",
-        description: "Unable to connect after multiple attempts. Try enabling CORS bypass or check camera settings.",
-        variant: "destructive",
-      });
+  const handleError = (message: string) => {
+    setError({ type: "error", message });
+    setLoading(false);
+    if (onError) {
+      onError(message);
     }
   };
 
@@ -239,6 +210,10 @@ const CameraFeed: React.FC<CameraFeedProps> = ({
     if (cameraUrl) {
       window.open(formatCameraUrl(cameraUrl), '_blank');
     }
+  };
+
+  const handleImageError = (event: React.SyntheticEvent<HTMLImageElement, Event>) => {
+    handleError("Failed to load camera feed");
   };
 
   if (!cameraUrl) {
@@ -346,23 +321,21 @@ const CameraFeed: React.FC<CameraFeedProps> = ({
         <div className="w-full h-full flex flex-col">
           <AspectRatio ratio={16/9} className="bg-black">
             {videoMode === 'img' ? (
-              // Snapshot mode - refreshes every second
-              <img 
-                src={getVideoUrl()}
-                className="w-full h-full object-contain"
-                onLoad={handleLoad}
-                onError={handleError}
+              <img
+                src={getProxiedUrl(cameraUrl)}
                 alt="Camera Feed"
-                key={Date.now()} // Force refresh
+                className="w-full h-full object-cover"
+                onError={handleImageError}
+                onLoad={handleLoad}
               />
             ) : (
-              // Video stream mode
-              <img 
-                src={getVideoUrl()}
+              <img
+                src={getProxiedUrl(cameraUrl)}
                 className="w-full h-full object-contain"
                 onLoad={handleLoad}
-                onError={handleError}
+                onError={handleImageError}
                 alt="Camera Feed"
+                key={Date.now()} // Force refresh
               />
             )}
           </AspectRatio>
