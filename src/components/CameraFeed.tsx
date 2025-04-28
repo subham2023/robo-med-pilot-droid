@@ -69,12 +69,15 @@ const CameraFeed = ({ cameraUrl, onError, onUrlChange }: CameraFeedProps) => {
     
     // Try to detect the appropriate URL format
     if (cameraUrl) {
+      // Log the URL format detection
+      console.log("Detecting camera type for URL:", cameraUrl);
       const detectedUrl = detectCameraType(cameraUrl);
+      console.log("Detected URL format:", detectedUrl);
+      
       if (detectedUrl !== cameraUrl && onUrlChange) {
-        // Notify parent component about the adjusted URL
-        console.log("Detected better camera URL format, updating:", detectedUrl);
+        console.log("URL format changed, updating to:", detectedUrl);
         onUrlChange(detectedUrl);
-        return; // Will reload with new URL
+        return;
       }
     }
     
@@ -86,6 +89,7 @@ const CameraFeed = ({ cameraUrl, onError, onUrlChange }: CameraFeedProps) => {
         
         // If connection test failed, try enabling CORS bypass
         if (result.status === "error" && !useCorsBypass) {
+          console.log("Connection failed, enabling CORS bypass");
           setUseCorsBypass(true);
           setRefreshKey(Date.now());
           toast({
@@ -96,10 +100,29 @@ const CameraFeed = ({ cameraUrl, onError, onUrlChange }: CameraFeedProps) => {
       });
     }
     
+    // Add network status check
+    const checkNetworkStatus = () => {
+      const isOnline = navigator.onLine;
+      console.log("Network status - Online:", isOnline);
+      if (!isOnline) {
+        setError(true);
+        toast({
+          title: "Network Error",
+          description: "Please check your internet connection",
+          variant: "destructive",
+        });
+      }
+    };
+    
+    window.addEventListener('online', checkNetworkStatus);
+    window.addEventListener('offline', checkNetworkStatus);
+    checkNetworkStatus();
+    
     const timeout = setTimeout(() => {
       if (loading) {
-        console.log("Camera feed timed out");
+        console.log("Camera feed timed out, current mode:", fallbackMode);
         if (fallbackMode === "iframe") {
+          console.log("Switching to image mode");
           setFallbackMode("img");
           setLoading(true);
           toast({
@@ -107,6 +130,7 @@ const CameraFeed = ({ cameraUrl, onError, onUrlChange }: CameraFeedProps) => {
             description: "Using direct image mode for camera feed",
           });
         } else if (fallbackMode === "img" && !imgError) {
+          console.log("Switching to direct mode");
           setFallbackMode("direct");
           setLoading(true);
           toast({
@@ -114,6 +138,7 @@ const CameraFeed = ({ cameraUrl, onError, onUrlChange }: CameraFeedProps) => {
             description: "Using direct browser access for camera feed",
           });
         } else {
+          console.log("All fallback modes failed");
           setError(true);
           setLoading(false);
           if (onError) onError();
@@ -126,7 +151,11 @@ const CameraFeed = ({ cameraUrl, onError, onUrlChange }: CameraFeedProps) => {
       }
     }, 10000);
     
-    return () => clearTimeout(timeout);
+    return () => {
+      clearTimeout(timeout);
+      window.removeEventListener('online', checkNetworkStatus);
+      window.removeEventListener('offline', checkNetworkStatus);
+    };
   }, [cameraUrl, fallbackMode, refreshKey, useCorsBypass]);
 
   const handleLoad = () => {
@@ -135,18 +164,21 @@ const CameraFeed = ({ cameraUrl, onError, onUrlChange }: CameraFeedProps) => {
     setError(false);
   };
 
-  const handleError = () => {
+  const handleError = (e: any) => {
     console.log("Camera feed error detected in mode:", fallbackMode);
+    console.error("Error details:", e);
     
     if (fallbackMode === "iframe") {
-      // Try image mode next
+      console.log("iframe mode failed, trying image mode");
       setFallbackMode("img");
       setLoading(true);
     } else if (fallbackMode === "img") {
+      console.log("image mode failed, trying direct mode");
       setImgError(true);
       setFallbackMode("direct");
       setLoading(true);
     } else {
+      console.log("all modes failed");
       setLoading(false);
       setError(true);
       if (onError) onError();

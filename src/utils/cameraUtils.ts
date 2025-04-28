@@ -11,27 +11,61 @@ export const testCameraConnection = async (url: string): Promise<{ success: bool
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5000);
     
-    const response = await fetch(url, { 
-      method: 'HEAD',
-      mode: 'no-cors',
-      signal: controller.signal
-    });
-    
-    clearTimeout(timeoutId);
-    
-    return { 
-      success: true, 
-      message: "Camera connection successful" 
-    };
+    // Try different methods to test connection
+    try {
+      // First try with HEAD request
+      const headResponse = await fetch(url, { 
+        method: 'HEAD',
+        mode: 'no-cors',
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+      console.log("HEAD request successful:", headResponse.status);
+      
+      return { 
+        success: true, 
+        message: "Camera connection successful" 
+      };
+    } catch (headError) {
+      console.log("HEAD request failed, trying GET request");
+      
+      // If HEAD fails, try GET request
+      const getResponse = await fetch(url, { 
+        method: 'GET',
+        mode: 'no-cors',
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+      console.log("GET request successful:", getResponse.status);
+      
+      return { 
+        success: true, 
+        message: "Camera connection successful (GET method)" 
+      };
+    }
   } catch (error) {
     console.error("Camera connection test failed:", error);
     
-    // Check if the error is a CORS issue
-    if (error instanceof DOMException && error.name === "AbortError") {
-      return { 
-        success: false, 
-        message: "Connection timed out. Check if camera is powered on and connected to network." 
-      };
+    // Check specific error types
+    if (error instanceof DOMException) {
+      if (error.name === "AbortError") {
+        return { 
+          success: false, 
+          message: "Connection timed out. Check if camera is powered on and connected to network." 
+        };
+      } else if (error.name === "SecurityError") {
+        return {
+          success: false,
+          message: "Security error. Try enabling CORS bypass or check camera permissions."
+        };
+      } else if (error.name === "NetworkError") {
+        return {
+          success: false,
+          message: "Network error. Check your internet connection and camera IP address."
+        };
+      }
     }
     
     return { 
