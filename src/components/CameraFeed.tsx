@@ -11,13 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { 
-  formatCameraUrl, 
-  debugCameraConnection,
-  testCameraConnection,
-  getIpWebcamUrls
-} from '@/utils/cameraUtils';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { formatCameraUrl } from '@/utils/cameraUtils';
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { AspectRatio } from "@/components/ui/aspect-ratio";
@@ -26,7 +20,6 @@ interface CameraFeedProps {
   cameraUrl: string;
   onError?: (message: string) => void;
   onUrlChange?: (url: string) => void;
-  loadingTimeout?: number;
 }
 
 interface SuggestedUrl {
@@ -44,14 +37,12 @@ type VideoMode = 'direct' | 'mjpeg' | 'img';
 const CameraFeed: React.FC<CameraFeedProps> = ({ 
   cameraUrl, 
   onError, 
-  onUrlChange,
-  loadingTimeout = 10000
+  onUrlChange
 }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<CameraError | null>(null);
   const { toast } = useToast();
-  const [suggestedUrls, setSuggestedUrls] = useState<SuggestedUrl[]>([]);
-  const [debugInfo, setDebugInfo] = useState<Record<string, string>>({});
+  const [suggestedUrls] = useState<SuggestedUrl[]>([]);
   const [useCorsBypass, setUseCorsBypass] = useState(true);
   const [videoMode, setVideoMode] = useState<VideoMode>('direct');
   const [retryAttempts, setRetryAttempts] = useState<Record<VideoMode, number>>({
@@ -59,12 +50,10 @@ const CameraFeed: React.FC<CameraFeedProps> = ({
     mjpeg: 0,
     img: 0
   });
-  const [dimensions, setDimensions] = useState({ width: 640, height: 480 }); // Default dimensions
   const imageRef = useRef<HTMLImageElement>(null);
   const maxRetries = 3;
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const corsProxyUrl = "https://corsproxy.io/?";
-  
+
   // Reset state when camera URL changes
   useEffect(() => {
     setLoading(true);
@@ -74,18 +63,8 @@ const CameraFeed: React.FC<CameraFeedProps> = ({
       mjpeg: 0,
       img: 0
     });
-    setDimensions({ width: 640, height: 480 });
     setVideoMode('direct');
   }, [cameraUrl]);
-
-  // Handle cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
-    };
-  }, []);
 
   const getProxiedUrl = (url: string): string => {
     if (!url) return '';
@@ -105,7 +84,7 @@ const CameraFeed: React.FC<CameraFeedProps> = ({
 
     return useCorsBypass ? `${corsProxyUrl}${encodeURIComponent(cleanUrl)}` : cleanUrl;
   };
-  
+
   const getVideoUrl = (): string => {
     if (!cameraUrl) return '';
     
@@ -122,11 +101,10 @@ const CameraFeed: React.FC<CameraFeedProps> = ({
     if (baseUrl.includes(':8080')) {
       switch (videoMode) {
         case 'mjpeg':
-          return getProxiedUrl(`${baseUrl}/video`); // Try video endpoint for better compatibility
+          return getProxiedUrl(`${baseUrl}/video`);
         case 'direct':
-          return getProxiedUrl(`${baseUrl}/videofeed`); // Try videofeed for direct mode
+          return getProxiedUrl(`${baseUrl}/videofeed`);
         case 'img':
-          // Use shot.jpg for still images with cache busting
           return `${getProxiedUrl(`${baseUrl}/shot.jpg`)}?t=${Date.now()}`;
         default:
           return getProxiedUrl(`${baseUrl}/video`);
@@ -172,19 +150,19 @@ const CameraFeed: React.FC<CameraFeedProps> = ({
       title: "Switching video mode",
       description: `Trying ${nextMode.toUpperCase()} mode...`,
     });
-  }, [videoMode, retryAttempts, maxRetries]);
+  }, [videoMode, retryAttempts, maxRetries, toast]);
 
   const handleLoad = useCallback(() => {
     if (imageRef.current) {
       const { naturalWidth, naturalHeight } = imageRef.current;
       if (naturalWidth && naturalHeight) {
-        setDimensions({ width: naturalWidth, height: naturalHeight });
+        // Image loaded successfully with dimensions
+        console.log(`Camera feed loaded: ${naturalWidth}x${naturalHeight}`);
       }
     }
-    console.log("Camera feed loaded successfully in mode:", videoMode);
     setLoading(false);
     setError(null);
-  }, [videoMode]);
+  }, []);
 
   const handleError = useCallback((message: string) => {
     console.error("Camera feed error:", message);
@@ -217,9 +195,8 @@ const CameraFeed: React.FC<CameraFeedProps> = ({
   };
   
   const handleSelectUrl = (urlValue: string): void => {
-    const selectedUrl = suggestedUrls.find((item: SuggestedUrl) => item.url === urlValue)?.url || urlValue;
-    if (onUrlChange && selectedUrl) {
-      onUrlChange(selectedUrl);
+    if (onUrlChange) {
+      onUrlChange(urlValue);
       toast({
         title: "Camera URL Updated",
         description: "Trying with new camera stream format",
