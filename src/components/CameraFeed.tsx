@@ -52,7 +52,7 @@ const CameraFeed: React.FC<CameraFeedProps> = ({
   const { toast } = useToast();
   const [suggestedUrls, setSuggestedUrls] = useState<SuggestedUrl[]>([]);
   const [debugInfo, setDebugInfo] = useState<Record<string, string>>({});
-  const [useCorsBypass, setUseCorsBypass] = useState(false);
+  const [useCorsBypass, setUseCorsBypass] = useState(true);
   const [videoMode, setVideoMode] = useState<VideoMode>('direct');
   const [retryCount, setRetryCount] = useState(0);
   const maxRetries = 3;
@@ -77,14 +77,46 @@ const CameraFeed: React.FC<CameraFeedProps> = ({
   }, []);
 
   const getProxiedUrl = (url: string): string => {
-    if (!useCorsBypass) return url;
-    return `${corsProxyUrl}${encodeURIComponent(url)}`;
+    if (!url) return '';
+    
+    // If URL already includes a CORS proxy, return as is
+    if (url.includes('corsproxy.io')) {
+      return url;
+    }
+
+    // Clean up the URL first
+    let cleanUrl = url.trim();
+    
+    // Ensure URL has protocol
+    if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
+      cleanUrl = `http://${cleanUrl}`;
+    }
+
+    return useCorsBypass ? `${corsProxyUrl}${encodeURIComponent(cleanUrl)}` : cleanUrl;
   };
   
   const getVideoUrl = (): string => {
     if (!cameraUrl) return '';
+    
+    // Clean up the base URL
     const baseUrl = cameraUrl.endsWith('/') ? cameraUrl.slice(0, -1) : cameraUrl;
     
+    // IP Webcam specific endpoints
+    if (baseUrl.includes(':8080')) {
+      switch (videoMode) {
+        case 'direct':
+          return getProxiedUrl(`${baseUrl}/video`);
+        case 'mjpeg':
+          return getProxiedUrl(`${baseUrl}/videofeed`);
+        case 'img':
+          // Add timestamp to prevent caching
+          return `${getProxiedUrl(`${baseUrl}/shot.jpg`)}?_=${Date.now()}`;
+        default:
+          return getProxiedUrl(`${baseUrl}/video`);
+      }
+    }
+    
+    // Default endpoints for other cameras
     switch (videoMode) {
       case 'direct':
         return getProxiedUrl(`${baseUrl}/video`);
