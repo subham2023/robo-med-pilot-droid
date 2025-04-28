@@ -6,73 +6,48 @@ export const testCameraConnection = async (url: string): Promise<{ success: bool
   if (!url) {
     return { success: false, message: "No camera URL provided" };
   }
-  
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
-    
-    // Try different methods to test connection
+
+  const baseUrl = url.endsWith('/') ? url.slice(0, -1) : url;
+  const endpoints = [
+    '/video',
+    '/videofeed',
+    '/shot.jpg',
+    '/photo.jpg',
+    ''  // Test base URL as well
+  ];
+
+  for (const endpoint of endpoints) {
     try {
-      // First try with HEAD request
-      const headResponse = await fetch(url, { 
+      const testUrl = `${baseUrl}${endpoint}`;
+      console.log(`Testing endpoint: ${testUrl}`);
+      
+      const response = await fetch(testUrl, {
         method: 'HEAD',
         mode: 'no-cors',
-        signal: controller.signal
+        cache: 'no-cache',
+        headers: {
+          'Accept': 'image/webp,image/jpeg,*/*'
+        }
       });
+
+      console.log(`Response for ${endpoint}:`, response.status);
       
-      clearTimeout(timeoutId);
-      console.log("HEAD request successful:", headResponse.status);
-      
-      return { 
-        success: true, 
-        message: "Camera connection successful" 
-      };
-    } catch (headError) {
-      console.log("HEAD request failed, trying GET request");
-      
-      // If HEAD fails, try GET request
-      const getResponse = await fetch(url, { 
-        method: 'GET',
-        mode: 'no-cors',
-        signal: controller.signal
-      });
-      
-      clearTimeout(timeoutId);
-      console.log("GET request successful:", getResponse.status);
-      
-      return { 
-        success: true, 
-        message: "Camera connection successful (GET method)" 
-      };
-    }
-  } catch (error) {
-    console.error("Camera connection test failed:", error);
-    
-    // Check specific error types
-    if (error instanceof DOMException) {
-      if (error.name === "AbortError") {
+      if (response.ok || response.status === 0) {  // status 0 is valid for no-cors
         return { 
-          success: false, 
-          message: "Connection timed out. Check if camera is powered on and connected to network." 
-        };
-      } else if (error.name === "SecurityError") {
-        return {
-          success: false,
-          message: "Security error. Try enabling CORS bypass or check camera permissions."
-        };
-      } else if (error.name === "NetworkError") {
-        return {
-          success: false,
-          message: "Network error. Check your internet connection and camera IP address."
+          success: true, 
+          message: `Connection successful via ${endpoint || 'base URL'}` 
         };
       }
+    } catch (error) {
+      console.log(`Error testing ${endpoint}:`, error);
+      // Continue testing other endpoints
     }
-    
-    return { 
-      success: false, 
-      message: "Failed to connect to camera. This may be due to CORS restrictions, try enabling the CORS bypass option." 
-    };
   }
+
+  return { 
+    success: false, 
+    message: "Failed to connect to any camera endpoint. Try enabling CORS bypass." 
+  };
 };
 
 export const formatCameraUrl = (url: string): string => {
@@ -83,7 +58,9 @@ export const formatCameraUrl = (url: string): string => {
     return `http://${url}`;
   }
   
-  return url;
+  // Remove any trailing slashes or endpoints
+  const baseUrl = url.split('/').slice(0, 3).join('/');
+  return baseUrl;
 };
 
 export const getCommonCameraUrls = (baseIp: string): { name: string; url: string }[] => {
@@ -94,13 +71,12 @@ export const getCommonCameraUrls = (baseIp: string): { name: string; url: string
   const ip = ipMatch ? ipMatch[0] : baseIp;
   
   return [
-    { name: "IP Webcam Android App (MJPEG)", url: `http://${ip}:8080/video` },
-    { name: "IP Webcam Android App (JPG)", url: `http://${ip}:8080/photo.jpg` },
-    { name: "IP Webcam Android App (Browser)", url: `http://${ip}:8080/browser.html` },
-    { name: "Generic MJPEG Stream", url: `http://${ip}/mjpeg` },
-    { name: "IP Camera HTTP Stream", url: `http://${ip}/videostream.cgi` },
-    { name: "ESP32-CAM Default", url: `http://${ip}:81/stream` },
-    { name: "ESP32-CAM Still Image", url: `http://${ip}/capture` },
+    { name: "IP Webcam - MJPEG Stream", url: `http://${ip}:8080/video` },
+    { name: "IP Webcam - Browser View", url: `http://${ip}:8080/browser.html` },
+    { name: "IP Webcam - Snapshot", url: `http://${ip}:8080/photo.jpg` },
+    { name: "IP Webcam - Low Res", url: `http://${ip}:8080/videofeed` },
+    { name: "ESP32-CAM Stream", url: `http://${ip}:81/stream` },
+    { name: "Generic MJPEG", url: `http://${ip}/mjpeg` },
   ];
 };
 
@@ -115,14 +91,11 @@ export const getIpWebcamUrls = (baseIp: string): { name: string; url: string }[]
   const ip = ipMatch ? ipMatch[0] : baseIp;
   
   return [
-    { name: "MJPEG Stream", url: `http://${ip}:8080/video` },
-    { name: "JPG Snapshot", url: `http://${ip}:8080/photo.jpg` },
+    { name: "High Quality MJPEG", url: `http://${ip}:8080/video` },
+    { name: "Low Quality MJPEG", url: `http://${ip}:8080/videofeed` },
+    { name: "Single JPEG Shot", url: `http://${ip}:8080/photo.jpg` },
     { name: "Browser Interface", url: `http://${ip}:8080/browser.html` },
-    { name: "Audio Only", url: `http://${ip}:8080/audio.wav` },
-    { name: "Low Resolution", url: `http://${ip}:8080/videofeed` },
-    { name: "WebRTC Stream", url: `http://${ip}:8080/webrtc` },
-    { name: "MJPEG with Auth", url: `http://${ip}:8080/video?username=&password=` },
-    { name: "HTML Preview", url: `http://${ip}:8080` }
+    { name: "WebRTC Stream", url: `http://${ip}:8080/webrtc` }
   ];
 };
 
@@ -132,22 +105,10 @@ export const getIpWebcamUrls = (baseIp: string): { name: string; url: string }[]
 export const detectCameraType = (url: string): string => {
   const formattedUrl = formatCameraUrl(url);
   
-  // IP Webcam Android app patterns
+  // IP Webcam app patterns
   if (formattedUrl.includes(':8080')) {
-    // If URL doesn't end with a specific endpoint, try to determine the best one
-    if (!formattedUrl.includes('/video') && !formattedUrl.includes('/photo.jpg') && !formattedUrl.includes('/videofeed')) {
-      // Extract the base URL and append the video endpoint
-      const baseUrlMatch = formattedUrl.match(/(https?:\/\/[^:/]+(?::\d+)?)/);
-      if (baseUrlMatch && baseUrlMatch[1]) {
-        console.log("Detected IP Webcam app, using video endpoint");
-        return `${baseUrlMatch[1]}/video`;
-      }
-    }
-  }
-  
-  // If URL ends with just the IP:port, append /video
-  if (/^https?:\/\/\d+\.\d+\.\d+\.\d+:\d+$/.test(formattedUrl)) {
-    return `${formattedUrl}/video`;
+    // Return just the base URL, let the component handle endpoints
+    return formattedUrl;
   }
   
   return formattedUrl;
@@ -158,23 +119,7 @@ export const detectCameraType = (url: string): string => {
  */
 export const getImageUrlFromStreamUrl = (streamUrl: string): string => {
   const formattedUrl = formatCameraUrl(streamUrl);
-  
-  // IP Webcam app - convert video to snapshot
-  if (formattedUrl.includes(':8080/video')) {
-    return formattedUrl.replace('/video', '/photo.jpg');
-  }
-  
-  // If URL is just the base IP:port, use photo.jpg
-  if (/^https?:\/\/\d+\.\d+\.\d+\.\d+:\d+$/.test(formattedUrl)) {
-    return `${formattedUrl}/photo.jpg`;
-  }
-  
-  // ESP32-CAM - convert stream to snapshot
-  if (formattedUrl.includes(':81/stream')) {
-    return formattedUrl.replace(':81/stream', '/capture');
-  }
-  
-  return formattedUrl;
+  return `${formattedUrl}/photo.jpg`;
 };
 
 /**
@@ -187,27 +132,47 @@ export const debugCameraConnection = async (url: string): Promise<{ status: stri
   const info: Record<string, string> = {
     originalUrl: url,
     formattedUrl: formattedUrl,
-    isMJPEG: formattedUrl.includes('/video') || formattedUrl.includes('/stream') ? "Yes" : "No",
-    isIPWebcam: formattedUrl.includes(':8080') ? "Yes" : "No",
-    isESP32CAM: formattedUrl.includes(':81/stream') ? "Yes" : "No",
-    corsIssue: "Possible - Try enabling CORS bypass"
+    networkStatus: navigator.onLine ? "Online" : "Offline",
+    webSocketSupport: "WebSocket" in window ? "Yes" : "No",
+    userAgent: navigator.userAgent
   };
   
   try {
-    const testResult = await testCameraConnection(formattedUrl);
-    info.connectionTest = testResult.success ? "Success" : "Failed";
-    info.testMessage = testResult.message;
+    // Test base URL
+    const baseResponse = await fetch(formattedUrl, { 
+      method: 'HEAD',
+      mode: 'no-cors',
+      cache: 'no-cache'
+    });
+    info.baseUrlStatus = baseResponse.status.toString();
+    
+    // Test video endpoint
+    const videoResponse = await fetch(`${formattedUrl}/video`, { 
+      method: 'HEAD',
+      mode: 'no-cors',
+      cache: 'no-cache'
+    });
+    info.videoEndpointStatus = videoResponse.status.toString();
     
     return {
-      status: testResult.success ? "success" : "error",
+      status: "success",
       info: info
     };
   } catch (error) {
     info.error = String(error);
+    info.errorType = error instanceof Error ? error.name : "Unknown";
+    info.suggestion = "Try enabling CORS bypass or check network connection";
     
     return {
       status: "error",
       info: info
     };
   }
+};
+
+// New function to validate IP Webcam URL
+export const validateIpWebcamUrl = (url: string): boolean => {
+  // Check if it's a valid URL with IP and port 8080
+  const urlPattern = /^https?:\/\/\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:8080\/?$/;
+  return urlPattern.test(url);
 };
