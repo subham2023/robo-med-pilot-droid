@@ -123,12 +123,13 @@ const CameraFeed: React.FC<CameraFeedProps> = ({
     // Set new loading timeout
     timeoutRef.current = setTimeout(() => {
       if (loading) {
-        setError({
+        const timeoutError = {
           type: 'timeout',
           message: 'Camera connection timed out. Please check your network connection and camera status.'
-        });
+        };
+        setError(timeoutError);
         setLoading(false);
-        if (onError) onError(error?.message || '');
+        if (onError) onError(timeoutError.message);
       }
     }, loadingTimeout);
 
@@ -320,24 +321,14 @@ const CameraFeed: React.FC<CameraFeedProps> = ({
       {!error && (
         <div className="w-full h-full flex flex-col">
           <AspectRatio ratio={16/9} className="bg-black">
-            {videoMode === 'img' ? (
-              <img
-                src={getProxiedUrl(cameraUrl)}
-                alt="Camera Feed"
-                className="w-full h-full object-cover"
-                onError={handleImageError}
-                onLoad={handleLoad}
-              />
-            ) : (
-              <img
-                src={getProxiedUrl(cameraUrl)}
-                className="w-full h-full object-contain"
-                onLoad={handleLoad}
-                onError={handleImageError}
-                alt="Camera Feed"
-                key={Date.now()} // Force refresh
-              />
-            )}
+            <img
+              src={getVideoUrl()}
+              className="w-full h-full object-contain"
+              onLoad={handleLoad}
+              onError={handleImageError}
+              alt="Camera Feed"
+              key={videoMode} // Force refresh when mode changes
+            />
           </AspectRatio>
           
           {/* Controls */}
