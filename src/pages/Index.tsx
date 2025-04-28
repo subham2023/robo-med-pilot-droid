@@ -1,14 +1,16 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Settings, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Square, List } from "lucide-react";
+import { Settings, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Square, List, RefreshCw } from "lucide-react";
 import JoystickControl from "@/components/JoystickControl";
 import { useToast } from "@/components/ui/use-toast";
 import MedicineScheduler from "@/components/MedicineScheduler";
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import CameraFeed from "@/components/CameraFeed";
 
 interface Medicine {
   name: string;
@@ -25,6 +27,7 @@ const Index = () => {
 
   const [activeTab, setActiveTab] = useState("control");
   const [scheduledMedicines, setScheduledMedicines] = useState<Medicine[]>([]);
+  const [cameraLoading, setCameraLoading] = useState(false);
   
   const { toast } = useToast();
   const webViewRef = useRef<HTMLIFrameElement>(null);
@@ -113,6 +116,9 @@ const Index = () => {
       description: "Your configuration has been saved successfully.",
     });
     setActiveTab("control");
+    
+    // After saving settings, try to reload the camera feed
+    reloadCamera();
   };
 
   const sendMotorCommand = async (command: string) => {
@@ -165,9 +171,32 @@ const Index = () => {
   };
 
   const reloadCamera = () => {
-    if (webViewRef.current) {
-      webViewRef.current.src = settings.cameraUrl;
+    if (!settings.cameraUrl) {
+      toast({
+        title: "Camera URL Missing",
+        description: "Please set a camera URL in settings first.",
+        variant: "destructive",
+      });
+      return;
     }
+    
+    setCameraLoading(true);
+    
+    if (webViewRef.current) {
+      webViewRef.current.src = '';
+      
+      setTimeout(() => {
+        if (webViewRef.current) {
+          webViewRef.current.src = settings.cameraUrl;
+        }
+        setCameraLoading(false);
+      }, 500);
+    }
+    
+    toast({
+      title: "Reloading Camera",
+      description: "Attempting to connect to camera feed...",
+    });
   };
 
   const handleScheduleMedicine = (medicine: Medicine) => {
@@ -263,22 +292,48 @@ const Index = () => {
                       <h3 className="text-lg font-medium">Camera Feed</h3>
                       <Button 
                         variant="outline" 
-                        size="sm" 
+                        size="sm"
                         onClick={reloadCamera}
+                        className="flex items-center gap-2"
                       >
+                        <RefreshCw className="h-4 w-4" />
                         Reload
                       </Button>
                     </div>
                     <div className="relative bg-black rounded-md flex-grow min-h-[300px] overflow-hidden">
+                      {/* Enhanced camera view with better error handling */}
+                      {cameraLoading ? (
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-cyan-500"></div>
+                        </div>
+                      ) : null}
+                      
                       <iframe 
                         ref={webViewRef}
-                        src={settings.cameraUrl} 
-                        className="absolute inset-0 w-full h-full"
+                        src={settings.cameraUrl || ''} 
+                        className="absolute inset-0 w-full h-full bg-gray-900"
                         title="IP Camera Stream"
+                        onError={() => {
+                          toast({
+                            title: "Camera Feed Error",
+                            description: "Could not connect to camera. Check URL and network.",
+                            variant: "destructive",
+                          });
+                        }}
+                        allow="camera;microphone"
+                        sandbox="allow-scripts allow-same-origin"
                       />
                       
-                      <div className="absolute inset-0 flex items-center justify-center text-white opacity-50 pointer-events-none">
-                        {!settings.cameraUrl && "Configure camera URL in settings"}
+                      <div className="absolute inset-0 flex flex-col items-center justify-center text-white bg-black bg-opacity-50 pointer-events-none">
+                        {!settings.cameraUrl ? "Configure camera URL in settings" : ""}
+                        <Button 
+                          className="mt-2 pointer-events-auto"
+                          variant="outline"
+                          onClick={reloadCamera}
+                          style={{ display: settings.cameraUrl ? 'block' : 'none' }}
+                        >
+                          Connect to Camera
+                        </Button>
                       </div>
                     </div>
                     
@@ -426,6 +481,14 @@ const Index = () => {
                     <p className="text-xs text-gray-500 mt-1">
                       Example: http://192.168.1.100:81/stream
                     </p>
+                    <div className="mt-2 text-xs text-amber-600">
+                      <p>Common camera URL formats:</p>
+                      <ul className="list-disc pl-5 mt-1 space-y-1">
+                        <li>ESP32-CAM: http://192.168.x.x:81/stream</li>
+                        <li>IP Webcam Android App: http://192.168.x.x:8080/video</li>
+                        <li>RTSP Stream: http://username:password@192.168.x.x:554/stream</li>
+                      </ul>
+                    </div>
                   </div>
                   
                   <div className="pt-4">
