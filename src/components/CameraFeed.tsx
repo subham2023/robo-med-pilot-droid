@@ -39,6 +39,8 @@ interface CameraError {
   message: string;
 }
 
+type VideoMode = 'direct' | 'mjpeg' | 'img';
+
 const CameraFeed: React.FC<CameraFeedProps> = ({ 
   cameraUrl, 
   onError, 
@@ -51,7 +53,7 @@ const CameraFeed: React.FC<CameraFeedProps> = ({
   const [suggestedUrls, setSuggestedUrls] = useState<SuggestedUrl[]>([]);
   const [debugInfo, setDebugInfo] = useState<Record<string, string>>({});
   const [useCorsBypass, setUseCorsBypass] = useState(false);
-  const [videoMode, setVideoMode] = useState<'direct' | 'mjpeg' | 'img'>('direct');
+  const [videoMode, setVideoMode] = useState<VideoMode>('direct');
   const corsProxyUrl = "https://corsproxy.io/?";
   const [retryCount, setRetryCount] = useState(0);
   const maxRetries = 3;
@@ -246,7 +248,7 @@ const CameraFeed: React.FC<CameraFeedProps> = ({
             <Switch 
               id="cors-bypass" 
               checked={useCorsBypass}
-              onCheckedChange={(checked) => {
+              onCheckedChange={(checked: boolean) => {
                 setUseCorsBypass(checked);
                 setError(null);
                 setLoading(true);
