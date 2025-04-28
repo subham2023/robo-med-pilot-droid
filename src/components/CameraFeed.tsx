@@ -204,7 +204,8 @@ const CameraFeed = ({ cameraUrl, onError, onUrlChange }: CameraFeedProps) => {
             <ul className="text-sm list-disc pl-5 space-y-1">
               <li>IP Webcam app is running</li>
               <li>Phone and computer are on same network</li>
-              <li>Camera URL is correct</li>
+              <li>Camera URL is correct (e.g., http://192.168.x.x:8080)</li>
+              <li>Try opening URL in browser first</li>
             </ul>
           </div>
           
@@ -258,9 +259,10 @@ const CameraFeed = ({ cameraUrl, onError, onUrlChange }: CameraFeedProps) => {
           onError={handleError}
           key={`iframe-${refreshKey}`}
           title="Camera Feed"
-          allow="camera;microphone"
-          sandbox="allow-scripts allow-same-origin allow-forms"
+          allow="camera;microphone;display-capture;fullscreen;autoplay"
+          sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads allow-presentation"
           loading="eager"
+          style={{ width: '100%', height: '100%', minHeight: '400px' }}
         />
       )}
     </div>
