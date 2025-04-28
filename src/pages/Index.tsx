@@ -300,7 +300,6 @@ const Index = () => {
                     <div className="relative bg-black rounded-md flex-grow min-h-[300px] overflow-hidden">
                       <CameraFeed
                         cameraUrl={settings.cameraUrl}
-                        onError={() => setCameraLoading(false)}
                         onUrlChange={handleCameraUrlChange}
                       />
                     </div>
