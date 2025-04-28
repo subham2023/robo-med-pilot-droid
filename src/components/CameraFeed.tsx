@@ -45,28 +45,18 @@ const CameraFeed: React.FC<CameraFeedProps> = ({
   onUrlChange,
   loadingTimeout = 10000
 }) => {
-  const iframeRef = useRef<HTMLIFrameElement>(null);
-  const imgRef = useRef<HTMLImageElement>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<CameraError | null>(null);
-  const [bypassCors, setBypassCors] = useState(false);
-  const [showToast, setShowToast] = useState(false);
-  const [toastMessage, setToastMessage] = useState("");
-  const [toastType, setToastType] = useState<"success" | "error">("success");
   const [imgError, setImgError] = useState(false);
-  const [fallbackMode, setFallbackMode] = useState<"iframe" | "img" | "direct">("iframe");
   const { toast } = useToast();
   const [suggestedUrls, setSuggestedUrls] = useState<SuggestedUrl[]>([]);
   const [debugInfo, setDebugInfo] = useState<Record<string, string>>({});
-  const [isDebugOpen, setIsDebugOpen] = useState(false);
-  const [refreshKey, setRefreshKey] = useState(Date.now());
   const [useCorsBypass, setUseCorsBypass] = useState(false);
   const [videoMode, setVideoMode] = useState<'direct' | 'mjpeg' | 'img'>('direct');
   const corsProxyUrl = "https://corsproxy.io/?";
   const [retryCount, setRetryCount] = useState(0);
   const maxRetries = 3;
-  const timeoutRef = useRef<ReturnType<typeof setTimeout>>(null);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   // Reset state when camera URL changes
   useEffect(() => {
@@ -121,17 +111,17 @@ const CameraFeed: React.FC<CameraFeedProps> = ({
     }
 
     // Set new loading timeout
-    timeoutRef.current = setTimeout(() => {
-      if (loading) {
-        const timeoutError = {
-          type: 'timeout',
-          message: 'Camera connection timed out. Please check your network connection and camera status.'
-        };
-        setError(timeoutError);
-        setLoading(false);
-        if (onError) onError(timeoutError.message);
-      }
+    const timeoutId = setTimeout(() => {
+      const timeoutError = {
+        type: 'timeout',
+        message: 'Camera connection timed out. Please check your network connection and camera status.'
+      };
+      setError(timeoutError);
+      setLoading(false);
+      if (onError) onError(timeoutError.message);
     }, loadingTimeout);
+
+    timeoutRef.current = timeoutId;
 
     try {
       // Test camera connection first
@@ -161,7 +151,7 @@ const CameraFeed: React.FC<CameraFeedProps> = ({
       setLoading(false);
       if (onError) onError(error instanceof Error ? error.message : 'Failed to connect to camera');
     }
-  }, [cameraUrl, loading, loadingTimeout, onError]);
+  }, [cameraUrl, loadingTimeout, onError]);
 
   // Initialize camera when dependencies change
   useEffect(() => {
