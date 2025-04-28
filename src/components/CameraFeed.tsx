@@ -54,7 +54,13 @@ const CameraFeed: React.FC<CameraFeedProps> = ({
   const [debugInfo, setDebugInfo] = useState<Record<string, string>>({});
   const [useCorsBypass, setUseCorsBypass] = useState(true);
   const [videoMode, setVideoMode] = useState<VideoMode>('direct');
-  const [retryCount, setRetryCount] = useState(0);
+  const [retryAttempts, setRetryAttempts] = useState<Record<VideoMode, number>>({
+    direct: 0,
+    mjpeg: 0,
+    img: 0
+  });
+  const [dimensions, setDimensions] = useState({ width: 640, height: 480 }); // Default dimensions
+  const imageRef = useRef<HTMLImageElement>(null);
   const maxRetries = 3;
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const corsProxyUrl = "https://corsproxy.io/?";
@@ -63,7 +69,12 @@ const CameraFeed: React.FC<CameraFeedProps> = ({
   useEffect(() => {
     setLoading(true);
     setError(null);
-    setRetryCount(0);
+    setRetryAttempts({
+      direct: 0,
+      mjpeg: 0,
+      img: 0
+    });
+    setDimensions({ width: 640, height: 480 });
     setVideoMode('direct');
   }, [cameraUrl]);
 
@@ -135,113 +146,68 @@ const CameraFeed: React.FC<CameraFeedProps> = ({
     }
   };
 
-  const initializeCamera = useCallback(async () => {
-    if (!cameraUrl) return;
-
-    setLoading(true);
-    setError(null);
-    setRetryCount(0);
-
-    // Clear any existing timeout
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
+  const switchToNextMode = useCallback(() => {
+    const modes: VideoMode[] = ['direct', 'mjpeg', 'img'];
+    const currentIndex = modes.indexOf(videoMode);
+    const nextMode = modes[(currentIndex + 1) % modes.length];
+    
+    // Check if we've tried all modes too many times
+    if (Object.values(retryAttempts).every(attempts => attempts >= maxRetries)) {
+      setError({
+        type: 'connection',
+        message: 'Unable to connect to camera after trying all modes. Please check your camera settings.'
+      });
+      setLoading(false);
+      return;
     }
+    
+    // Update retry attempts for the next mode
+    setRetryAttempts(prev => ({
+      ...prev,
+      [nextMode]: prev[nextMode] + 1
+    }));
+    
+    setVideoMode(nextMode);
+    toast({
+      title: "Switching video mode",
+      description: `Trying ${nextMode.toUpperCase()} mode...`,
+    });
+  }, [videoMode, retryAttempts, maxRetries]);
 
-    // Set new loading timeout
-    const timeoutId = setTimeout(() => {
-      if (retryCount < maxRetries) {
-        // Try next video mode if current one fails
-        setRetryCount(prev => prev + 1);
-        const modes: VideoMode[] = ['direct', 'mjpeg', 'img'];
-        const currentIndex = modes.indexOf(videoMode);
-        const nextMode = modes[(currentIndex + 1) % modes.length];
-        setVideoMode(nextMode);
-        toast({
-          title: "Trying different mode",
-          description: `Switching to ${nextMode.toUpperCase()} mode`,
-        });
-      } else {
-        const timeoutError = {
-          type: 'timeout',
-          message: 'Camera connection timed out. Please check your network connection and camera status.'
-        };
-        setError(timeoutError);
-        setLoading(false);
-        if (onError) onError(timeoutError.message);
-      }
-    }, loadingTimeout);
-
-    timeoutRef.current = timeoutId;
-
-    try {
-      // Test camera connection first
-      const connectionTest = await testCameraConnection(cameraUrl);
-      if (!connectionTest.success) {
-        throw new Error(connectionTest.message);
-      }
-
-      // Get debug info
-      const debugResult = await debugCameraConnection(cameraUrl);
-      setDebugInfo(debugResult.info);
-
-      // Set suggested URLs for IP Webcam
-      if (cameraUrl.includes(':8080')) {
-        const baseIp = cameraUrl.match(/(https?:\/\/[^:/]+(?::\d+)?)/)?.[1] || "";
-        if (baseIp) {
-          setSuggestedUrls(getIpWebcamUrls(baseIp));
-        }
-      }
-
-    } catch (error) {
-      console.error("Camera initialization error:", error);
-      const errorMessage = error instanceof Error ? error.message : 'Failed to connect to camera';
-      
-      if (retryCount < maxRetries) {
-        // Try next video mode if current one fails
-        setRetryCount(prev => prev + 1);
-        const modes: VideoMode[] = ['direct', 'mjpeg', 'img'];
-        const currentIndex = modes.indexOf(videoMode);
-        const nextMode = modes[(currentIndex + 1) % modes.length];
-        setVideoMode(nextMode);
-        toast({
-          title: "Connection failed",
-          description: `Trying ${nextMode.toUpperCase()} mode...`,
-        });
-      } else {
-        setError({
-          type: error instanceof Error && error.message.includes('CORS') ? 'cors' : 'connection',
-          message: errorMessage
-        });
-        setLoading(false);
-        if (onError) onError(errorMessage);
+  const handleLoad = useCallback(() => {
+    if (imageRef.current) {
+      const { naturalWidth, naturalHeight } = imageRef.current;
+      if (naturalWidth && naturalHeight) {
+        setDimensions({ width: naturalWidth, height: naturalHeight });
       }
     }
-  }, [cameraUrl, loadingTimeout, onError, retryCount, videoMode, maxRetries]);
-
-  // Initialize camera when dependencies change
-  useEffect(() => {
-    initializeCamera();
-  }, [initializeCamera, videoMode, useCorsBypass]);
-
-  const handleLoad = (): void => {
     console.log("Camera feed loaded successfully in mode:", videoMode);
     setLoading(false);
     setError(null);
-    setRetryCount(0);
-  };
+  }, [videoMode]);
 
-  const handleError = (message: string) => {
-    setError({ type: "error", message });
-    setLoading(false);
-    if (onError) {
-      onError(message);
+  const handleError = useCallback((message: string) => {
+    console.error("Camera feed error:", message);
+    if (retryAttempts[videoMode] < maxRetries) {
+      switchToNextMode();
+    } else {
+      setError({ 
+        type: "error", 
+        message: `Failed to load camera feed: ${message}` 
+      });
+      setLoading(false);
+      if (onError) onError(message);
     }
-  };
+  }, [videoMode, retryAttempts, maxRetries, switchToNextMode, onError]);
 
   const reloadCamera = (): void => {
     setLoading(true);
     setError(null);
-    setRetryCount(0);
+    setRetryAttempts({
+      direct: 0,
+      mjpeg: 0,
+      img: 0
+    });
     setVideoMode('direct');
     
     toast({
@@ -267,16 +233,14 @@ const CameraFeed: React.FC<CameraFeedProps> = ({
     }
   };
 
-  const handleImageError = () => {
-    handleError("Failed to load camera feed");
-  };
-
   if (!cameraUrl) {
     return (
-      <div className="flex items-center justify-center h-full bg-gray-900 text-white">
-        <div className="text-center">
-          <CameraOff className="mx-auto h-8 w-8 mb-2" />
-          <p>No camera URL configured</p>
+      <div className="relative w-full h-full">
+        <div className="flex items-center justify-center h-full bg-gray-900 text-white">
+          <div className="text-center">
+            <CameraOff className="mx-auto h-8 w-8 mb-2" />
+            <p>No camera URL configured</p>
+          </div>
         </div>
       </div>
     );
@@ -289,9 +253,9 @@ const CameraFeed: React.FC<CameraFeedProps> = ({
           <div className="flex flex-col items-center">
             <Loader className="animate-spin h-12 w-12 mb-2 text-cyan-500" />
             <p className="text-white text-sm">Connecting to camera...</p>
-            {retryCount > 0 && (
-              <p className="text-gray-400 text-xs mt-1">Attempt {retryCount + 1} of {maxRetries + 1}</p>
-            )}
+            <p className="text-gray-400 text-xs mt-1">
+              Mode: {videoMode.toUpperCase()} (Attempt {retryAttempts[videoMode] + 1}/{maxRetries + 1})
+            </p>
           </div>
         </div>
       )}
@@ -319,7 +283,11 @@ const CameraFeed: React.FC<CameraFeedProps> = ({
                 setError(null);
                 setLoading(true);
                 setVideoMode('direct');
-                setRetryCount(0);
+                setRetryAttempts({
+                  direct: 0,
+                  mjpeg: 0,
+                  img: 0
+                });
                 toast({
                   title: checked ? "CORS Bypass Enabled" : "CORS Bypass Disabled",
                   description: "Retrying camera connection...",
@@ -349,25 +317,6 @@ const CameraFeed: React.FC<CameraFeedProps> = ({
               <Camera className="h-4 w-4 mr-2" />
               Open directly
             </Button>
-            
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button variant="secondary" size="sm" className="w-full">Debug Info</Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Camera Debug Information</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-2 max-h-[60vh] overflow-auto">
-                  {Object.entries(debugInfo).map(([key, value]) => (
-                    <div key={key} className="grid grid-cols-2 gap-2 border-b pb-1">
-                      <span className="font-medium">{key}</span>
-                      <span className="overflow-hidden text-ellipsis">{value}</span>
-                    </div>
-                  ))}
-                </div>
-              </DialogContent>
-            </Dialog>
           </div>
         </div>
       )}
@@ -375,17 +324,34 @@ const CameraFeed: React.FC<CameraFeedProps> = ({
       {!error && (
         <div className="w-full h-full flex flex-col">
           <AspectRatio ratio={16/9} className="bg-black">
-            <img
-              src={getVideoUrl()}
-              className="w-full h-full object-contain"
-              onLoad={handleLoad}
-              onError={handleImageError}
-              alt="Camera Feed"
-              key={videoMode} // Force refresh when mode changes
-            />
+            <div 
+              style={{ 
+                width: '100%', 
+                height: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: 'black'
+              }}
+            >
+              <img
+                ref={imageRef}
+                src={getVideoUrl()}
+                style={{
+                  maxWidth: '100%',
+                  maxHeight: '100%',
+                  width: 'auto',
+                  height: 'auto',
+                  objectFit: 'contain'
+                }}
+                onLoad={handleLoad}
+                onError={() => handleError("Failed to load camera feed")}
+                alt="Camera Feed"
+                key={`${videoMode}-${Date.now()}`}
+              />
+            </div>
           </AspectRatio>
           
-          {/* Controls */}
           <div className="absolute bottom-4 left-4 right-4 flex justify-center gap-2 bg-black/50 p-2 rounded">
             <Button
               variant="outline"
@@ -393,7 +359,10 @@ const CameraFeed: React.FC<CameraFeedProps> = ({
               onClick={() => {
                 const nextMode = videoMode === 'direct' ? 'mjpeg' : videoMode === 'mjpeg' ? 'img' : 'direct';
                 setVideoMode(nextMode);
-                setRetryCount(0);
+                setRetryAttempts(prev => ({
+                  ...prev,
+                  [nextMode]: 0
+                }));
                 toast({
                   title: "Changing Video Mode",
                   description: `Switching to ${nextMode.toUpperCase()} mode`,
