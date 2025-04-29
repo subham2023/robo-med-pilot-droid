@@ -3,7 +3,7 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
 import { componentTagger } from "lovable-tagger";
-import type { ConfigEnv, LogLevel } from "vite";
+import type { ConfigEnv } from "vite";
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }: ConfigEnv) => ({
@@ -30,8 +30,9 @@ export default defineConfig(({ mode }: ConfigEnv) => ({
     exclude: [],
   },
   esbuild: {
-    logOverride: { 
-      'this-is-undefined-in-esm': 'silent' as LogLevel 
+    logOverride: {
+      // Using string literal instead of LogLevel type to avoid compatibility issues
+      'this-is-undefined-in-esm': 'silent'
     }
   }
 }));
