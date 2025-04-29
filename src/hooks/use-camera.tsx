@@ -179,41 +179,26 @@ export const useCamera = (options: UseCameraOptions = {}): UseCameraReturn => {
     
     try {
       console.log('Setting up camera constraints...');
-      // Mobile-optimized constraints
-      const mobileConstraints: MediaStreamConstraints = {
+      // Try simpler constraints first
+      const basicConstraints: MediaStreamConstraints = {
         video: {
-          facingMode: cameraPosition === 'front' ? 'user' : 'environment',
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
+          facingMode: cameraPosition === 'front' ? 'user' : 'environment'
         },
         audio: false
       };
 
-      // Desktop constraints with deviceId
-      const desktopConstraints: MediaStreamConstraints = {
-        video: currentDevice?.deviceId ? {
-          deviceId: { exact: currentDevice.deviceId },
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
-        } : true,
-        audio: false
-      };
+      console.log('Using basic constraints:', basicConstraints);
 
-      console.log('Using constraints:', getDeviceType() === 'mobile' ? mobileConstraints : desktopConstraints);
-
-      // Try mobile constraints first if no specific device is selected
       let stream: MediaStream;
       try {
-        stream = await navigator.mediaDevices.getUserMedia(
-          getDeviceType() === 'mobile' ? mobileConstraints : desktopConstraints
-        );
-        console.log('Stream obtained successfully');
-      } catch (initialError) {
-        console.warn('Failed with initial constraints, trying fallback:', initialError);
-        // Fallback to basic constraints
-        stream = await navigator.mediaDevices.getUserMedia({
+        stream = await navigator.mediaDevices.getUserMedia(basicConstraints);
+        console.log('Stream obtained with basic constraints');
+      } catch (basicError) {
+        console.warn('Failed with basic constraints, trying fallback:', basicError);
+        // Ultimate fallback
+        stream = await navigator.mediaDevices.getUserMedia({ 
           video: true,
-          audio: false
+          audio: false 
         });
         console.log('Stream obtained with fallback constraints');
       }
@@ -223,17 +208,36 @@ export const useCamera = (options: UseCameraOptions = {}): UseCameraReturn => {
         return false;
       }
 
+      // Verify we got video tracks
+      const videoTracks = stream.getVideoTracks();
+      if (videoTracks.length === 0) {
+        throw new Error('No video tracks found in the stream');
+      }
+
+      console.log('Video tracks:', videoTracks.map(track => ({
+        label: track.label,
+        enabled: track.enabled,
+        muted: track.muted,
+        readyState: track.readyState
+      })));
+
       streamRef.current = stream;
       
       if (!videoRef.current) {
-        handleError("Video element not available");
-        setIsLoading(false);
-        return false;
+        throw new Error("Video element not available");
       }
 
-      // Ensure video element has correct attributes for mobile
+      // Clean up any existing srcObject
+      if (videoRef.current.srcObject) {
+        const oldStream = videoRef.current.srcObject as MediaStream;
+        oldStream.getTracks().forEach(track => track.stop());
+      }
+
+      // Set up video element
+      videoRef.current.setAttribute('autoplay', 'true');
       videoRef.current.setAttribute('playsinline', 'true');
-      videoRef.current.setAttribute('webkit-playsinline', 'true');
+      videoRef.current.setAttribute('muted', 'true');
+      videoRef.current.muted = true;
       videoRef.current.srcObject = stream;
       
       return new Promise((resolve) => {
@@ -244,8 +248,18 @@ export const useCamera = (options: UseCameraOptions = {}): UseCameraReturn => {
           return;
         }
 
+        const timeoutId = setTimeout(() => {
+          console.error('Video loading timed out');
+          handleError('Video loading timed out');
+          stopCurrentStream();
+          setIsLoading(false);
+          resolve(false);
+        }, 10000); // 10 second timeout
+
         videoRef.current.onloadedmetadata = () => {
           console.log('Video metadata loaded');
+          clearTimeout(timeoutId);
+
           if (!videoRef.current || !mountedRef.current) {
             stopCurrentStream();
             setIsLoading(false);
@@ -275,6 +289,7 @@ export const useCamera = (options: UseCameraOptions = {}): UseCameraReturn => {
 
         videoRef.current.onerror = (e) => {
           console.error('Video element error:', e);
+          clearTimeout(timeoutId);
           handleError('Error loading video stream');
           setIsLoading(false);
           resolve(false);
@@ -296,13 +311,15 @@ export const useCamera = (options: UseCameraOptions = {}): UseCameraReturn => {
         } else if (error.name === 'OverconstrainedError') {
           errorMessage = "Camera doesn't support the required resolution";
         }
+      } else if (error instanceof Error) {
+        errorMessage = error.message;
       }
       
       handleError(errorMessage);
       setIsLoading(false);
       return false;
     }
-  }, [currentDevice, cameraPosition, hasPermission, initializeCamera, stopCurrentStream, handleError]);
+  }, [cameraPosition, hasPermission, initializeCamera, stopCurrentStream, handleError]);
 
   // Stop camera stream
   const stopCamera = useCallback(() => {

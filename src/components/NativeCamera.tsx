@@ -77,6 +77,26 @@ const NativeCamera: React.FC<NativeCameraProps> = ({ onError }) => {
           playsInline
           muted
           className="w-full h-full object-cover"
+          style={{ transform: cameraPosition === 'front' ? 'scaleX(-1)' : 'none' }}
+          onLoadedMetadata={(e) => {
+            console.log('Video metadata loaded:', e);
+            const video = e.target as HTMLVideoElement;
+            console.log('Video dimensions:', video.videoWidth, 'x', video.videoHeight);
+            setDebugInfo(prev => 
+              `${new Date().toISOString()}: Video loaded - ${video.videoWidth}x${video.videoHeight}\n${prev}`
+            );
+          }}
+          onPlay={() => {
+            console.log('Video playback started');
+            setDebugInfo(prev => `${new Date().toISOString()}: Video playback started\n${prev}`);
+          }}
+          onError={(e) => {
+            const video = e.target as HTMLVideoElement;
+            console.error('Video element error:', video.error);
+            setDebugInfo(prev => 
+              `${new Date().toISOString()}: Video error - ${video.error?.message || 'Unknown error'}\n${prev}`
+            );
+          }}
         />
 
         {(isLoading || isInitializing) && (
@@ -87,6 +107,11 @@ const NativeCamera: React.FC<NativeCameraProps> = ({ onError }) => {
               <p className="text-white/60 text-xs mt-2">
                 Status: {hasPermission ? 'Permission granted' : 'Waiting for permission'}
               </p>
+              <div className="text-white/60 text-xs mt-2 max-w-xs text-center">
+                <p>Camera position: {cameraPosition}</p>
+                <p>Active: {isActive ? 'Yes' : 'No'}</p>
+                <p>Has front/back: {hasFrontAndBackCamera ? 'Yes' : 'No'}</p>
+              </div>
             </div>
           </div>
         )}
