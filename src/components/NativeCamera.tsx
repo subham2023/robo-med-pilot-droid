@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect } from 'react';
 import { useCamera } from '@/hooks/use-camera';
 import { Button } from "@/components/ui/button";
 import { RefreshCw, Camera, CameraOff } from "lucide-react";
@@ -12,38 +12,26 @@ const NativeCamera: React.FC<NativeCameraProps> = ({ onError }) => {
   const { toast } = useToast();
   const {
     videoRef,
-    devices,
-    currentDevice,
     isLoading,
-    isActive,
-    hasPermission,
     error,
-    cameraPosition,
     hasFrontAndBackCamera,
     startCamera,
-    stopCamera,
-    switchCamera,
-    setDeviceId,
-    setCameraPosition
+    switchCamera
   } = useCamera({ autoStart: true });
 
   useEffect(() => {
-    if (error && onError) {
-      onError(error);
+    if (error) {
+      console.error("Camera error:", error);
+      toast({
+        title: "Camera Error",
+        description: error,
+        variant: "destructive",
+      });
+      if (onError) {
+        onError(error);
+      }
     }
-  }, [error, onError]);
-
-  const handleError = (message: string) => {
-    console.error("Camera error:", message);
-    toast({
-      title: "Camera Error",
-      description: message,
-      variant: "destructive",
-    });
-    if (onError) {
-      onError(message);
-    }
-  };
+  }, [error, onError, toast]);
 
   return (
     <div className="relative w-full h-full">
