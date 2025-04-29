@@ -26,6 +26,7 @@ const Index = () => {
 
   const [activeTab, setActiveTab] = useState("control");
   const [scheduledMedicines, setScheduledMedicines] = useState<Medicine[]>([]);
+  const [cameraError, setCameraError] = useState<string | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -113,7 +114,7 @@ const Index = () => {
     });
     setActiveTab("control");
     
-    reloadCamera();
+    setCameraError(null);
   };
 
   const sendMotorCommand = async (command: string) => {
@@ -175,6 +176,8 @@ const Index = () => {
       return;
     }
     
+    setCameraError(null);
+    
     toast({
       title: "Reloading Camera",
       description: "Attempting to connect to camera feed...",
@@ -194,6 +197,11 @@ const Index = () => {
       title: "Camera URL Updated",
       description: "Using new camera stream format",
     });
+  };
+
+  const handleCameraError = (message: string) => {
+    setCameraError(message);
+    console.error("Camera error:", message);
   };
 
   const handleScheduleMedicine = (medicine: Medicine) => {
@@ -301,8 +309,18 @@ const Index = () => {
                       <CameraFeed
                         cameraUrl={settings.cameraUrl}
                         onUrlChange={handleCameraUrlChange}
+                        onError={handleCameraError}
                       />
                     </div>
+                    
+                    {cameraError && (
+                      <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-700">
+                        <p>Camera connection issue: {cameraError}</p>
+                        <p className="text-xs mt-1">
+                          Try using device camera instead or check your network connection.
+                        </p>
+                      </div>
+                    )}
                     
                     <div className="mt-4 flex justify-center">
                       <JoystickControl onMove={sendMotorCommand} />
@@ -462,6 +480,14 @@ const Index = () => {
                           <li>❌ http://192.168.1.100:8080/browser.html</li>
                         </ul>
                       </div>
+                    </div>
+                    
+                    <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded text-sm">
+                      <p className="font-medium text-blue-700">Need to use your phone's camera directly?</p>
+                      <p className="text-blue-600 mt-1">
+                        You don't need to set up IP Webcam. In the camera feed area, click the "Device Camera" 
+                        button to use your phone's built-in camera directly.
+                      </p>
                     </div>
                   </div>
                   
