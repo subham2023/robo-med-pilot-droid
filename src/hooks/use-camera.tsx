@@ -1,11 +1,9 @@
-
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import {
   requestCameraPermission,
   identifyCameras,
-  isSecureContext,
-  getDeviceType
+  isSecureContext
 } from '@/utils/cameraDetection';
 
 type CameraPosition = 'front' | 'back' | 'other';
