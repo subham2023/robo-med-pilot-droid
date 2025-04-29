@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useCamera } from '@/hooks/use-camera';
 import { Button } from "@/components/ui/button";
 import { RefreshCw, Camera, CameraOff } from "lucide-react";
@@ -11,6 +11,7 @@ interface NativeCameraProps {
 const NativeCamera: React.FC<NativeCameraProps> = ({ onError }) => {
   const { toast } = useToast();
   const [initAttempted, setInitAttempted] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(false);
   
   const {
     videoRef,
@@ -19,45 +20,52 @@ const NativeCamera: React.FC<NativeCameraProps> = ({ onError }) => {
     hasFrontAndBackCamera,
     startCamera,
     switchCamera,
-    hasPermission
-  } = useCamera({ autoStart: false }); // Changed to false to prevent auto-initialization
+    hasPermission,
+    isActive
+  } = useCamera({ 
+    autoStart: false,
+    onError: (err) => {
+      console.error("Camera error:", err);
+      toast({
+        title: "Camera Error",
+        description: err,
+        variant: "destructive",
+      });
+      if (onError) onError(err);
+    }
+  });
+
+  // Stabilized camera initialization
+  const initializeCamera = useCallback(async () => {
+    if (isInitializing || isActive) return;
+    
+    setIsInitializing(true);
+    try {
+      await startCamera();
+      setInitAttempted(true);
+    } catch (err) {
+      console.error("Failed to initialize camera:", err);
+      if (onError) onError(err instanceof Error ? err.message : "Failed to initialize camera");
+    } finally {
+      setIsInitializing(false);
+    }
+  }, [startCamera, onError, isInitializing, isActive]);
 
   // Handle initial camera start
   useEffect(() => {
-    if (!initAttempted && !isLoading) {
-      setInitAttempted(true);
-      startCamera().catch((err) => {
-        console.error("Failed to start camera:", err);
-        if (onError) {
-          onError(err.message || "Failed to start camera");
-        }
-      });
+    if (!initAttempted && !isLoading && !isActive) {
+      initializeCamera();
     }
-  }, [initAttempted, isLoading, startCamera, onError]);
-
-  // Handle errors
-  useEffect(() => {
-    if (error) {
-      console.error("Camera error:", error);
-      toast({
-        title: "Camera Error",
-        description: error,
-        variant: "destructive",
-      });
-      if (onError) {
-        onError(error);
-      }
-    }
-  }, [error, onError, toast]);
+  }, [initAttempted, isLoading, isActive, initializeCamera]);
 
   const handleRetry = async () => {
-    setInitAttempted(false); // Reset initialization flag
-    await startCamera();
+    setInitAttempted(false);
+    await initializeCamera();
   };
 
   return (
     <div className="relative w-full h-full">
-      {isLoading && (
+      {(isLoading || isInitializing) && (
         <div className="absolute inset-0 flex items-center justify-center bg-gray-900 z-10">
           <div className="flex flex-col items-center">
             <RefreshCw className="animate-spin h-12 w-12 mb-2 text-cyan-500" />
@@ -66,7 +74,7 @@ const NativeCamera: React.FC<NativeCameraProps> = ({ onError }) => {
         </div>
       )}
       
-      {error && (
+      {error && !isInitializing && (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 z-10 text-white">
           <CameraOff className="h-10 w-10 mb-2 text-red-400" />
           <p>{error}</p>
@@ -74,6 +82,7 @@ const NativeCamera: React.FC<NativeCameraProps> = ({ onError }) => {
             variant="outline" 
             className="mt-4 text-white border-white hover:bg-white hover:text-gray-900"
             onClick={handleRetry}
+            disabled={isInitializing}
           >
             Retry
           </Button>
@@ -90,18 +99,19 @@ const NativeCamera: React.FC<NativeCameraProps> = ({ onError }) => {
         />
       </div>
 
-      <div className="absolute bottom-4 right-4 flex gap-2">
-        {hasFrontAndBackCamera && !error && (
+      {isActive && hasFrontAndBackCamera && !error && (
+        <div className="absolute bottom-4 right-4 flex gap-2">
           <Button
             variant="outline"
             size="icon"
             onClick={() => switchCamera()}
+            disabled={isInitializing}
             className="bg-white/10 hover:bg-white/20"
           >
             <Camera className="h-4 w-4" />
           </Button>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 };

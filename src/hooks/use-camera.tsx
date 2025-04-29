@@ -11,6 +11,7 @@ type CameraPosition = 'front' | 'back' | 'other';
 interface UseCameraOptions {
   autoStart?: boolean;
   preferredPosition?: CameraPosition;
+  onError?: (error: string) => void;
 }
 
 interface UseCameraReturn {
@@ -31,7 +32,7 @@ interface UseCameraReturn {
 }
 
 export const useCamera = (options: UseCameraOptions = {}): UseCameraReturn => {
-  const { autoStart = false, preferredPosition = 'front' } = options;
+  const { autoStart = false, preferredPosition = 'front', onError } = options;
   const { toast } = useToast();
   
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
@@ -45,6 +46,13 @@ export const useCamera = (options: UseCameraOptions = {}): UseCameraReturn => {
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+
+  const handleError = useCallback((errorMessage: string) => {
+    setError(errorMessage);
+    if (onError) {
+      onError(errorMessage);
+    }
+  }, [onError]);
 
   const stopCurrentStream = useCallback(() => {
     if (streamRef.current) {
@@ -60,7 +68,8 @@ export const useCamera = (options: UseCameraOptions = {}): UseCameraReturn => {
     setError(null);
     
     if (!isSecureContext()) {
-      setError("Camera access requires a secure context (HTTPS)");
+      const errorMsg = "Camera access requires a secure context (HTTPS)";
+      handleError(errorMsg);
       setIsLoading(false);
       return false;
     }
@@ -68,7 +77,7 @@ export const useCamera = (options: UseCameraOptions = {}): UseCameraReturn => {
     const result = await requestCameraPermission();
     
     if (!result.success) {
-      setError(result.error || "Unable to access camera");
+      handleError(result.error || "Unable to access camera");
       setIsLoading(false);
       setHasPermission(false);
       return false;
@@ -107,11 +116,11 @@ export const useCamera = (options: UseCameraOptions = {}): UseCameraReturn => {
       setIsLoading(false);
       return true;
     } else {
-      setError("No cameras found");
+      handleError("No cameras found");
       setIsLoading(false);
       return false;
     }
-  }, [preferredPosition]);
+  }, [preferredPosition, handleError]);
 
   // Start camera with current device
   const startCamera = useCallback(async (): Promise<boolean> => {
@@ -127,7 +136,7 @@ export const useCamera = (options: UseCameraOptions = {}): UseCameraReturn => {
     stopCurrentStream();
     
     if (!currentDevice && devices.length === 0) {
-      setError("No camera available");
+      handleError("No camera available");
       setIsLoading(false);
       return false;
     }
@@ -147,7 +156,7 @@ export const useCamera = (options: UseCameraOptions = {}): UseCameraReturn => {
     }
     
     if (!deviceToUse) {
-      setError("No camera device selected");
+      handleError("No camera device selected");
       setIsLoading(false);
       return false;
     }
@@ -168,23 +177,37 @@ export const useCamera = (options: UseCameraOptions = {}): UseCameraReturn => {
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         
-        videoRef.current.onloadedmetadata = () => {
-          if (videoRef.current) {
+        return new Promise((resolve) => {
+          if (!videoRef.current) {
+            handleError("Video element not available");
+            setIsLoading(false);
+            resolve(false);
+            return;
+          }
+
+          videoRef.current.onloadedmetadata = () => {
+            if (!videoRef.current) {
+              handleError("Video element not available");
+              setIsLoading(false);
+              resolve(false);
+              return;
+            }
+
             videoRef.current.play()
               .then(() => {
                 setIsActive(true);
                 setCurrentDevice(deviceToUse);
                 setIsLoading(false);
+                resolve(true);
               })
               .catch(err => {
                 console.error('Error playing video:', err);
-                setError('Unable to play video feed');
+                handleError('Unable to play video feed');
                 setIsLoading(false);
+                resolve(false);
               });
-          }
-        };
-        
-        return true;
+          };
+        });
       } else {
         throw new Error("Video element not available");
       }
@@ -202,11 +225,11 @@ export const useCamera = (options: UseCameraOptions = {}): UseCameraReturn => {
         }
       }
       
-      setError(errorMessage);
+      handleError(errorMessage);
       setIsLoading(false);
       return false;
     }
-  }, [currentDevice, devices, cameraPosition, hasPermission, initializeCamera, stopCurrentStream]);
+  }, [currentDevice, devices, cameraPosition, hasPermission, initializeCamera, stopCurrentStream, handleError]);
 
   // Stop camera stream
   const stopCamera = useCallback(() => {
@@ -247,7 +270,7 @@ export const useCamera = (options: UseCameraOptions = {}): UseCameraReturn => {
     const device = devices.find(d => d.deviceId === deviceId);
     
     if (!device) {
-      setError("Camera device not found");
+      handleError("Camera device not found");
       return false;
     }
     
@@ -269,7 +292,7 @@ export const useCamera = (options: UseCameraOptions = {}): UseCameraReturn => {
     }
     
     return true;
-  }, [devices, isActive, startCamera]);
+  }, [devices, isActive, startCamera, handleError]);
 
   // Set camera position (front/back/other)
   const setPositionAndStart = useCallback(async (position: CameraPosition): Promise<boolean> => {
