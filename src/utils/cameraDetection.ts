@@ -31,15 +31,24 @@ export const requestCameraPermission = async (): Promise<{
   }
   
   try {
-    // Request access with explicit video config
-    const stream = await navigator.mediaDevices.getUserMedia({ 
-      video: {
-        facingMode: 'user', // Default to front camera
-        width: { ideal: 1280 },
-        height: { ideal: 720 }
-      },
-      audio: false 
-    });
+    // First try with basic video constraint
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ 
+        video: true,
+        audio: false 
+      });
+    } catch (basicError) {
+      // If basic fails, try with explicit mobile-friendly constraints
+      stream = await navigator.mediaDevices.getUserMedia({ 
+        video: {
+          facingMode: 'environment', // Try back camera first on mobile
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        },
+        audio: false 
+      });
+    }
     
     // Immediately stop the test stream after confirming access
     stream.getTracks().forEach(track => track.stop());
@@ -53,7 +62,7 @@ export const requestCameraPermission = async (): Promise<{
     }
     
     return { success: true, devices: videoDevices };
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error requesting camera permission:', error);
     
     // Provide user-friendly error messages based on error type

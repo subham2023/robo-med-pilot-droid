@@ -194,18 +194,26 @@ export const useCamera = (options: UseCameraOptions = {}): UseCameraReturn => {
     }
     
     try {
-      // Get camera stream with specific device ID
-      const constraints: MediaStreamConstraints = {
+      // Start with basic constraints for better mobile compatibility
+      let constraints: MediaStreamConstraints = {
         video: {
-          deviceId: { exact: deviceToUse.deviceId },
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
           facingMode: cameraPosition === 'front' ? 'user' : 'environment'
         },
         audio: false
       };
 
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      // Try to get the stream with basic constraints first
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+      } catch (basicError) {
+        // If basic constraints fail, try without deviceId
+        constraints = {
+          video: true,
+          audio: false
+        };
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+      }
       
       if (!mountedRef.current) {
         stream.getTracks().forEach(track => track.stop());
