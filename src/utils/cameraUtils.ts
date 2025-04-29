@@ -1,3 +1,4 @@
+
 /**
  * Utility functions for camera connectivity and debugging
  */
@@ -46,7 +47,7 @@ export const testCameraConnection = async (url: string): Promise<{ success: bool
 
   return { 
     success: false, 
-    message: "Failed to connect to any camera endpoint. Try enabling CORS bypass." 
+    message: "Failed to connect to any camera endpoint. Try using device camera instead." 
   };
 };
 
@@ -161,7 +162,7 @@ export const debugCameraConnection = async (url: string): Promise<{ status: stri
   } catch (error) {
     info.error = String(error);
     info.errorType = error instanceof Error ? error.name : "Unknown";
-    info.suggestion = "Try enabling CORS bypass or check network connection";
+    info.suggestion = "Try using the device camera instead of external IP camera";
     
     return {
       status: "error",
@@ -175,4 +176,28 @@ export const validateIpWebcamUrl = (url: string): boolean => {
   // Check if it's a valid URL with IP and port 8080
   const urlPattern = /^https?:\/\/\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:8080\/?$/;
   return urlPattern.test(url);
+};
+
+// Check if browser supports getUserMedia
+export const checkCameraSupport = (): boolean => {
+  return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+};
+
+// Get available video input devices
+export const getVideoDevices = async (): Promise<MediaDeviceInfo[]> => {
+  if (!checkCameraSupport()) {
+    return [];
+  }
+  
+  try {
+    // Request permission
+    await navigator.mediaDevices.getUserMedia({ video: true });
+    
+    // Get devices
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    return devices.filter(device => device.kind === 'videoinput');
+  } catch (error) {
+    console.error('Error accessing media devices:', error);
+    return [];
+  }
 };
