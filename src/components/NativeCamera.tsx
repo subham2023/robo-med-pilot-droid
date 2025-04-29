@@ -11,6 +11,7 @@ interface NativeCameraProps {
 const NativeCamera: React.FC<NativeCameraProps> = ({ onError }) => {
   const { toast } = useToast();
   const [isInitializing, setIsInitializing] = useState(false);
+  const [debugInfo, setDebugInfo] = useState<string>('');
   
   const {
     videoRef,
@@ -20,12 +21,14 @@ const NativeCamera: React.FC<NativeCameraProps> = ({ onError }) => {
     startCamera,
     switchCamera,
     isActive,
-    cameraPosition
+    cameraPosition,
+    hasPermission
   } = useCamera({ 
     autoStart: true,
     preferredPosition: 'back',
     onError: (err) => {
       console.error("Camera error:", err);
+      setDebugInfo(prev => `${new Date().toISOString()}: ${err}\n${prev}`);
       toast({
         title: "Camera Error",
         description: err,
@@ -39,10 +42,14 @@ const NativeCamera: React.FC<NativeCameraProps> = ({ onError }) => {
     if (isInitializing || isActive) return;
     
     setIsInitializing(true);
+    setDebugInfo(prev => `${new Date().toISOString()}: Initializing camera...\n${prev}`);
+    
     try {
-      await startCamera();
+      const result = await startCamera();
+      setDebugInfo(prev => `${new Date().toISOString()}: Camera start result: ${result}\n${prev}`);
     } catch (err) {
       console.error("Failed to initialize camera:", err);
+      setDebugInfo(prev => `${new Date().toISOString()}: Camera init error: ${err}\n${prev}`);
       if (onError) onError(err instanceof Error ? err.message : "Failed to initialize camera");
     } finally {
       setIsInitializing(false);
@@ -51,22 +58,9 @@ const NativeCamera: React.FC<NativeCameraProps> = ({ onError }) => {
 
   const handleRetry = useCallback(async () => {
     if (isInitializing) return;
+    setDebugInfo(prev => `${new Date().toISOString()}: Retrying camera initialization...\n${prev}`);
     await initializeCamera();
   }, [initializeCamera, isInitializing]);
-
-  const handleSwitchCamera = useCallback(async () => {
-    if (isInitializing) return;
-    try {
-      await switchCamera();
-    } catch (err) {
-      console.error("Failed to switch camera:", err);
-      toast({
-        title: "Camera Switch Error",
-        description: "Failed to switch camera. Please try again.",
-        variant: "destructive",
-      });
-    }
-  }, [switchCamera, isInitializing, toast]);
 
   useEffect(() => {
     if (!isActive && !isLoading && !isInitializing) {
@@ -90,6 +84,9 @@ const NativeCamera: React.FC<NativeCameraProps> = ({ onError }) => {
             <div className="flex flex-col items-center">
               <RefreshCw className="animate-spin h-12 w-12 mb-2 text-cyan-500" />
               <p className="text-white text-sm">Initializing camera...</p>
+              <p className="text-white/60 text-xs mt-2">
+                Status: {hasPermission ? 'Permission granted' : 'Waiting for permission'}
+              </p>
             </div>
           </div>
         )}
@@ -106,6 +103,9 @@ const NativeCamera: React.FC<NativeCameraProps> = ({ onError }) => {
             >
               Try Again
             </Button>
+            <div className="mt-4 max-w-md mx-auto p-4 bg-black/50 rounded text-xs text-white/60 font-mono whitespace-pre-wrap">
+              {debugInfo}
+            </div>
           </div>
         )}
 
@@ -114,7 +114,7 @@ const NativeCamera: React.FC<NativeCameraProps> = ({ onError }) => {
             <Button
               variant="outline"
               size="icon"
-              onClick={handleSwitchCamera}
+              onClick={() => switchCamera()}
               disabled={isInitializing}
               className="bg-black/20 backdrop-blur-sm border-white/20 hover:bg-white/20 text-white"
               title={`Switch to ${cameraPosition === 'front' ? 'back' : 'front'} camera`}

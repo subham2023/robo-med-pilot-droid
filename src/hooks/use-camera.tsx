@@ -86,18 +86,22 @@ export const useCamera = (options: UseCameraOptions = {}): UseCameraReturn => {
   // Initialize camera access and get device list
   const initializeCamera = useCallback(async (): Promise<boolean> => {
     if (!mountedRef.current) return false;
+    console.log('Starting camera initialization...');
     setIsLoading(true);
     setError(null);
     
     if (!isSecureContext()) {
       const errorMsg = "Camera access requires a secure context (HTTPS)";
+      console.error(errorMsg);
       handleError(errorMsg);
       setIsLoading(false);
       return false;
     }
     
     try {
+      console.log('Requesting camera permission...');
       const result = await requestCameraPermission();
+      console.log('Permission result:', result);
       
       if (!mountedRef.current) return false;
 
@@ -111,10 +115,12 @@ export const useCamera = (options: UseCameraOptions = {}): UseCameraReturn => {
       setHasPermission(true);
       
       if (result.devices && result.devices.length > 0) {
+        console.log('Available devices:', result.devices);
         setDevices(result.devices);
         
         // Detect available cameras
         const { frontCamera, backCamera } = identifyCameras(result.devices);
+        console.log('Identified cameras:', { frontCamera, backCamera });
         setHasFrontAndBackCamera(!!(frontCamera && backCamera));
         
         // Set the most appropriate initial device
@@ -135,17 +141,18 @@ export const useCamera = (options: UseCameraOptions = {}): UseCameraReturn => {
         }
         
         if (initialDevice) {
+          console.log('Setting initial device:', initialDevice);
           setCurrentDevice(initialDevice);
         }
         
         setIsLoading(false);
         return true;
-      } else {
-        handleError("No cameras found");
-        setIsLoading(false);
-        return false;
       }
+      handleError("No cameras found");
+      setIsLoading(false);
+      return false;
     } catch (err) {
+      console.error('Camera initialization error:', err);
       if (!mountedRef.current) return false;
       handleError("Failed to initialize camera");
       setIsLoading(false);
@@ -156,8 +163,10 @@ export const useCamera = (options: UseCameraOptions = {}): UseCameraReturn => {
   // Start camera with current device
   const startCamera = useCallback(async (): Promise<boolean> => {
     if (!mountedRef.current) return false;
+    console.log('Starting camera with position:', cameraPosition);
 
     if (!hasPermission) {
+      console.log('No permission, requesting...');
       const permissionGranted = await initializeCamera();
       if (!permissionGranted) return false;
     }
@@ -169,43 +178,44 @@ export const useCamera = (options: UseCameraOptions = {}): UseCameraReturn => {
     stopCurrentStream();
     
     try {
+      console.log('Setting up camera constraints...');
       // Mobile-optimized constraints
       const mobileConstraints: MediaStreamConstraints = {
         video: {
           facingMode: cameraPosition === 'front' ? 'user' : 'environment',
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
-          frameRate: { ideal: 30 }
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
         },
         audio: false
       };
 
       // Desktop constraints with deviceId
       const desktopConstraints: MediaStreamConstraints = {
-        video: {
-          deviceId: currentDevice?.deviceId ? { exact: currentDevice.deviceId } : undefined,
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
-          frameRate: { ideal: 30 }
-        },
+        video: currentDevice?.deviceId ? {
+          deviceId: { exact: currentDevice.deviceId },
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        } : true,
         audio: false
       };
+
+      console.log('Using constraints:', getDeviceType() === 'mobile' ? mobileConstraints : desktopConstraints);
 
       // Try mobile constraints first if no specific device is selected
       let stream: MediaStream;
       try {
         stream = await navigator.mediaDevices.getUserMedia(
-          currentDevice ? desktopConstraints : mobileConstraints
+          getDeviceType() === 'mobile' ? mobileConstraints : desktopConstraints
         );
+        console.log('Stream obtained successfully');
       } catch (initialError) {
         console.warn('Failed with initial constraints, trying fallback:', initialError);
         // Fallback to basic constraints
         stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: cameraPosition === 'front' ? 'user' : 'environment'
-          },
+          video: true,
           audio: false
         });
+        console.log('Stream obtained with fallback constraints');
       }
 
       if (!mountedRef.current) {
@@ -235,6 +245,7 @@ export const useCamera = (options: UseCameraOptions = {}): UseCameraReturn => {
         }
 
         videoRef.current.onloadedmetadata = () => {
+          console.log('Video metadata loaded');
           if (!videoRef.current || !mountedRef.current) {
             stopCurrentStream();
             setIsLoading(false);
@@ -244,6 +255,7 @@ export const useCamera = (options: UseCameraOptions = {}): UseCameraReturn => {
 
           videoRef.current.play()
             .then(() => {
+              console.log('Video playback started');
               if (!mountedRef.current) {
                 stopCurrentStream();
                 resolve(false);
@@ -261,16 +273,17 @@ export const useCamera = (options: UseCameraOptions = {}): UseCameraReturn => {
             });
         };
 
-        videoRef.current.onerror = () => {
+        videoRef.current.onerror = (e) => {
+          console.error('Video element error:', e);
           handleError('Error loading video stream');
           setIsLoading(false);
           resolve(false);
         };
       });
     } catch (error) {
+      console.error('Camera start error:', error);
       if (!mountedRef.current) return false;
       
-      console.error('Error starting camera:', error);
       let errorMessage = "Failed to start camera";
       
       if (error instanceof DOMException) {
