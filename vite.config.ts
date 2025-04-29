@@ -20,9 +20,14 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
-  // Remove any references to tsconfig.node.json
   build: {
     outDir: "dist",
     emptyOutDir: true,
+  },
+  optimizeDeps: {
+    exclude: [],
+  },
+  esbuild: {
+    logOverride: { 'this-is-undefined-in-esm': 'silent' }
   }
 }));
