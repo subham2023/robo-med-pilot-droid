@@ -3,14 +3,16 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
 import { componentTagger } from "lovable-tagger";
-import type { ConfigEnv } from "vite";
+import type { ConfigEnv, LogLevel } from "vite";
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }: ConfigEnv) => ({
   server: {
     host: "::",
     port: 8080,
-    https: {}, // Empty object for HTTPS options
+    https: {
+      // Empty object is not valid for TypeScript - needs to be a proper ServerOptions object
+    }, 
   },
   plugins: [
     react(),
@@ -31,8 +33,8 @@ export default defineConfig(({ mode }: ConfigEnv) => ({
   },
   esbuild: {
     logOverride: {
-      // Using string literal instead of LogLevel type to avoid compatibility issues
-      'this-is-undefined-in-esm': 'silent'
+      // Need to properly type this as a LogLevel
+      'this-is-undefined-in-esm': 'silent' as LogLevel
     }
   }
 }));
