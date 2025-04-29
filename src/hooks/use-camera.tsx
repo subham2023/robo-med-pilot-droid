@@ -46,8 +46,20 @@ export const useCamera = (options: UseCameraOptions = {}): UseCameraReturn => {
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const mountedRef = useRef<boolean>(true);
+
+  // Cleanup function
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, []);
 
   const handleError = useCallback((errorMessage: string) => {
+    if (!mountedRef.current) return;
     setError(errorMessage);
     if (onError) {
       onError(errorMessage);
@@ -56,14 +68,23 @@ export const useCamera = (options: UseCameraOptions = {}): UseCameraReturn => {
 
   const stopCurrentStream = useCallback(() => {
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current.getTracks().forEach(track => {
+        try {
+          track.stop();
+        } catch (err) {
+          console.error('Error stopping track:', err);
+        }
+      });
       streamRef.current = null;
+    }
+    if (mountedRef.current) {
       setIsActive(false);
     }
   }, []);
 
   // Initialize camera access and get device list
   const initializeCamera = useCallback(async (): Promise<boolean> => {
+    if (!mountedRef.current) return false;
     setIsLoading(true);
     setError(null);
     
@@ -74,49 +95,58 @@ export const useCamera = (options: UseCameraOptions = {}): UseCameraReturn => {
       return false;
     }
     
-    const result = await requestCameraPermission();
-    
-    if (!result.success) {
-      handleError(result.error || "Unable to access camera");
-      setIsLoading(false);
-      setHasPermission(false);
-      return false;
-    }
-    
-    setHasPermission(true);
-    
-    if (result.devices && result.devices.length > 0) {
-      setDevices(result.devices);
+    try {
+      const result = await requestCameraPermission();
       
-      // Detect available cameras
-      const { frontCamera, backCamera } = identifyCameras(result.devices);
-      setHasFrontAndBackCamera(!!(frontCamera && backCamera));
-      
-      // Set the most appropriate initial device
-      let initialDevice: MediaDeviceInfo | null = null;
-      
-      if (preferredPosition === 'front' && frontCamera) {
-        initialDevice = frontCamera;
-        setCameraPosition('front');
-      } else if (preferredPosition === 'back' && backCamera) {
-        initialDevice = backCamera;
-        setCameraPosition('back');
-      } else if (result.devices.length > 0) {
-        initialDevice = result.devices[0];
-        setCameraPosition(
-          initialDevice === frontCamera ? 'front' : 
-          initialDevice === backCamera ? 'back' : 'other'
-        );
+      if (!mountedRef.current) return false;
+
+      if (!result.success) {
+        handleError(result.error || "Unable to access camera");
+        setIsLoading(false);
+        setHasPermission(false);
+        return false;
       }
       
-      if (initialDevice) {
-        setCurrentDevice(initialDevice);
-      }
+      setHasPermission(true);
       
-      setIsLoading(false);
-      return true;
-    } else {
-      handleError("No cameras found");
+      if (result.devices && result.devices.length > 0) {
+        setDevices(result.devices);
+        
+        // Detect available cameras
+        const { frontCamera, backCamera } = identifyCameras(result.devices);
+        setHasFrontAndBackCamera(!!(frontCamera && backCamera));
+        
+        // Set the most appropriate initial device
+        let initialDevice: MediaDeviceInfo | null = null;
+        
+        if (preferredPosition === 'front' && frontCamera) {
+          initialDevice = frontCamera;
+          setCameraPosition('front');
+        } else if (preferredPosition === 'back' && backCamera) {
+          initialDevice = backCamera;
+          setCameraPosition('back');
+        } else if (result.devices.length > 0) {
+          initialDevice = result.devices[0];
+          setCameraPosition(
+            initialDevice === frontCamera ? 'front' : 
+            initialDevice === backCamera ? 'back' : 'other'
+          );
+        }
+        
+        if (initialDevice) {
+          setCurrentDevice(initialDevice);
+        }
+        
+        setIsLoading(false);
+        return true;
+      } else {
+        handleError("No cameras found");
+        setIsLoading(false);
+        return false;
+      }
+    } catch (err) {
+      if (!mountedRef.current) return false;
+      handleError("Failed to initialize camera");
       setIsLoading(false);
       return false;
     }
@@ -124,6 +154,8 @@ export const useCamera = (options: UseCameraOptions = {}): UseCameraReturn => {
 
   // Start camera with current device
   const startCamera = useCallback(async (): Promise<boolean> => {
+    if (!mountedRef.current) return false;
+
     if (!hasPermission) {
       const permissionGranted = await initializeCamera();
       if (!permissionGranted) return false;
@@ -163,55 +195,78 @@ export const useCamera = (options: UseCameraOptions = {}): UseCameraReturn => {
     
     try {
       // Get camera stream with specific device ID
-      const stream = await navigator.mediaDevices.getUserMedia({
+      const constraints: MediaStreamConstraints = {
         video: {
           deviceId: { exact: deviceToUse.deviceId },
           width: { ideal: 1280 },
-          height: { ideal: 720 }
+          height: { ideal: 720 },
+          facingMode: cameraPosition === 'front' ? 'user' : 'environment'
         },
         audio: false
-      });
+      };
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
       
+      if (!mountedRef.current) {
+        stream.getTracks().forEach(track => track.stop());
+        return false;
+      }
+
       streamRef.current = stream;
       
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        
-        return new Promise((resolve) => {
-          if (!videoRef.current) {
-            handleError("Video element not available");
+      if (!videoRef.current) {
+        handleError("Video element not available");
+        setIsLoading(false);
+        return false;
+      }
+
+      videoRef.current.srcObject = stream;
+      
+      return new Promise((resolve) => {
+        if (!videoRef.current || !mountedRef.current) {
+          stopCurrentStream();
+          setIsLoading(false);
+          resolve(false);
+          return;
+        }
+
+        videoRef.current.onloadedmetadata = () => {
+          if (!videoRef.current || !mountedRef.current) {
+            stopCurrentStream();
             setIsLoading(false);
             resolve(false);
             return;
           }
 
-          videoRef.current.onloadedmetadata = () => {
-            if (!videoRef.current) {
-              handleError("Video element not available");
+          videoRef.current.play()
+            .then(() => {
+              if (!mountedRef.current) {
+                stopCurrentStream();
+                resolve(false);
+                return;
+              }
+              setIsActive(true);
+              setCurrentDevice(deviceToUse);
+              setIsLoading(false);
+              resolve(true);
+            })
+            .catch(err => {
+              console.error('Error playing video:', err);
+              handleError('Unable to play video feed');
               setIsLoading(false);
               resolve(false);
-              return;
-            }
+            });
+        };
 
-            videoRef.current.play()
-              .then(() => {
-                setIsActive(true);
-                setCurrentDevice(deviceToUse);
-                setIsLoading(false);
-                resolve(true);
-              })
-              .catch(err => {
-                console.error('Error playing video:', err);
-                handleError('Unable to play video feed');
-                setIsLoading(false);
-                resolve(false);
-              });
-          };
-        });
-      } else {
-        throw new Error("Video element not available");
-      }
+        videoRef.current.onerror = () => {
+          handleError('Error loading video stream');
+          setIsLoading(false);
+          resolve(false);
+        };
+      });
     } catch (error) {
+      if (!mountedRef.current) return false;
+      
       console.error('Error starting camera:', error);
       let errorMessage = "Failed to start camera";
       
@@ -234,11 +289,12 @@ export const useCamera = (options: UseCameraOptions = {}): UseCameraReturn => {
   // Stop camera stream
   const stopCamera = useCallback(() => {
     stopCurrentStream();
-    setIsActive(false);
   }, [stopCurrentStream]);
 
   // Switch between front and back cameras
   const switchCamera = useCallback(async (): Promise<boolean> => {
+    if (!mountedRef.current) return false;
+    
     const newPosition = cameraPosition === 'front' ? 'back' : 'front';
     setCameraPosition(newPosition);
     
@@ -267,6 +323,8 @@ export const useCamera = (options: UseCameraOptions = {}): UseCameraReturn => {
 
   // Set camera to specific device
   const setDeviceId = useCallback(async (deviceId: string): Promise<boolean> => {
+    if (!mountedRef.current) return false;
+    
     const device = devices.find(d => d.deviceId === deviceId);
     
     if (!device) {
@@ -296,6 +354,8 @@ export const useCamera = (options: UseCameraOptions = {}): UseCameraReturn => {
 
   // Set camera position (front/back/other)
   const setPositionAndStart = useCallback(async (position: CameraPosition): Promise<boolean> => {
+    if (!mountedRef.current) return false;
+    
     setCameraPosition(position);
     
     const { frontCamera, backCamera } = identifyCameras(devices);
@@ -327,9 +387,9 @@ export const useCamera = (options: UseCameraOptions = {}): UseCameraReturn => {
 
   // Auto-start camera if configured
   useEffect(() => {
-    if (autoStart) {
+    if (autoStart && mountedRef.current) {
       initializeCamera().then(success => {
-        if (success) {
+        if (success && mountedRef.current) {
           startCamera();
         }
       });
