@@ -10,6 +10,7 @@ import MedicineScheduler from "@/components/MedicineScheduler";
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import CameraFeed from "@/components/CameraFeed";
+import NativeCamera from "@/components/NativeCamera";
 
 interface Medicine {
   name: string;
@@ -27,6 +28,7 @@ const Index = () => {
   const [activeTab, setActiveTab] = useState("control");
   const [scheduledMedicines, setScheduledMedicines] = useState<Medicine[]>([]);
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const [useNativeCamera, setUseNativeCamera] = useState(true);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -295,22 +297,38 @@ const Index = () => {
                   <CardContent className="p-4 flex flex-col h-full">
                     <div className="flex justify-between items-center mb-2">
                       <h3 className="text-lg font-medium">Camera Feed</h3>
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        onClick={reloadCamera}
-                        className="flex items-center gap-2"
-                      >
-                        <RefreshCw className="h-4 w-4" />
-                        Reload
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => setUseNativeCamera(!useNativeCamera)}
+                          className="flex items-center gap-2"
+                        >
+                          {useNativeCamera ? "Use IP Camera" : "Use Device Camera"}
+                        </Button>
+                        {!useNativeCamera && (
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={reloadCamera}
+                            className="flex items-center gap-2"
+                          >
+                            <RefreshCw className="h-4 w-4" />
+                            Reload
+                          </Button>
+                        )}
+                      </div>
                     </div>
                     <div className="relative bg-black rounded-md flex-grow min-h-[300px] overflow-hidden">
-                      <CameraFeed
-                        cameraUrl={settings.cameraUrl}
-                        onUrlChange={handleCameraUrlChange}
-                        onError={handleCameraError}
-                      />
+                      {useNativeCamera ? (
+                        <NativeCamera onError={handleCameraError} />
+                      ) : (
+                        <CameraFeed
+                          cameraUrl={settings.cameraUrl}
+                          onUrlChange={handleCameraUrlChange}
+                          onError={handleCameraError}
+                        />
+                      )}
                     </div>
                     
                     {cameraError && (
