@@ -3,7 +3,8 @@ import { useToast } from "@/hooks/use-toast";
 import {
   requestCameraPermission,
   identifyCameras,
-  isSecureContext
+  isSecureContext,
+  getDeviceType
 } from '@/utils/cameraDetection';
 
 type CameraPosition = 'front' | 'back' | 'other';
@@ -167,54 +168,46 @@ export const useCamera = (options: UseCameraOptions = {}): UseCameraReturn => {
     // Stop any existing stream
     stopCurrentStream();
     
-    if (!currentDevice && devices.length === 0) {
-      handleError("No camera available");
-      setIsLoading(false);
-      return false;
-    }
-    
-    // Use currentDevice if available, or use the appropriate camera based on position
-    const { frontCamera, backCamera } = identifyCameras(devices);
-    let deviceToUse = currentDevice;
-    
-    if (!deviceToUse) {
-      if (cameraPosition === 'front' && frontCamera) {
-        deviceToUse = frontCamera;
-      } else if (cameraPosition === 'back' && backCamera) {
-        deviceToUse = backCamera;
-      } else if (devices.length > 0) {
-        deviceToUse = devices[0];
-      }
-    }
-    
-    if (!deviceToUse) {
-      handleError("No camera device selected");
-      setIsLoading(false);
-      return false;
-    }
-    
     try {
-      // Start with basic constraints for better mobile compatibility
-      let constraints: MediaStreamConstraints = {
+      // Mobile-optimized constraints
+      const mobileConstraints: MediaStreamConstraints = {
         video: {
-          facingMode: cameraPosition === 'front' ? 'user' : 'environment'
+          facingMode: cameraPosition === 'front' ? 'user' : 'environment',
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+          frameRate: { ideal: 30 }
         },
         audio: false
       };
 
-      // Try to get the stream with basic constraints first
+      // Desktop constraints with deviceId
+      const desktopConstraints: MediaStreamConstraints = {
+        video: {
+          deviceId: currentDevice?.deviceId ? { exact: currentDevice.deviceId } : undefined,
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+          frameRate: { ideal: 30 }
+        },
+        audio: false
+      };
+
+      // Try mobile constraints first if no specific device is selected
       let stream: MediaStream;
       try {
-        stream = await navigator.mediaDevices.getUserMedia(constraints);
-      } catch (basicError) {
-        // If basic constraints fail, try without deviceId
-        constraints = {
-          video: true,
+        stream = await navigator.mediaDevices.getUserMedia(
+          currentDevice ? desktopConstraints : mobileConstraints
+        );
+      } catch (initialError) {
+        console.warn('Failed with initial constraints, trying fallback:', initialError);
+        // Fallback to basic constraints
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: cameraPosition === 'front' ? 'user' : 'environment'
+          },
           audio: false
-        };
-        stream = await navigator.mediaDevices.getUserMedia(constraints);
+        });
       }
-      
+
       if (!mountedRef.current) {
         stream.getTracks().forEach(track => track.stop());
         return false;
@@ -228,6 +221,9 @@ export const useCamera = (options: UseCameraOptions = {}): UseCameraReturn => {
         return false;
       }
 
+      // Ensure video element has correct attributes for mobile
+      videoRef.current.setAttribute('playsinline', 'true');
+      videoRef.current.setAttribute('webkit-playsinline', 'true');
       videoRef.current.srcObject = stream;
       
       return new Promise((resolve) => {
@@ -254,7 +250,6 @@ export const useCamera = (options: UseCameraOptions = {}): UseCameraReturn => {
                 return;
               }
               setIsActive(true);
-              setCurrentDevice(deviceToUse);
               setIsLoading(false);
               resolve(true);
             })
@@ -285,6 +280,8 @@ export const useCamera = (options: UseCameraOptions = {}): UseCameraReturn => {
           errorMessage = "Selected camera not found";
         } else if (error.name === 'NotReadableError') {
           errorMessage = "Camera is in use by another application";
+        } else if (error.name === 'OverconstrainedError') {
+          errorMessage = "Camera doesn't support the required resolution";
         }
       }
       
@@ -292,7 +289,7 @@ export const useCamera = (options: UseCameraOptions = {}): UseCameraReturn => {
       setIsLoading(false);
       return false;
     }
-  }, [currentDevice, devices, cameraPosition, hasPermission, initializeCamera, stopCurrentStream, handleError]);
+  }, [currentDevice, cameraPosition, hasPermission, initializeCamera, stopCurrentStream, handleError]);
 
   // Stop camera stream
   const stopCamera = useCallback(() => {
@@ -304,8 +301,19 @@ export const useCamera = (options: UseCameraOptions = {}): UseCameraReturn => {
     if (!mountedRef.current) return false;
     
     const newPosition = cameraPosition === 'front' ? 'back' : 'front';
+    
+    // Stop current stream before switching
+    stopCurrentStream();
+    
+    // Update position first
     setCameraPosition(newPosition);
     
+    // For mobile devices, we'll use facingMode instead of deviceId
+    if (getDeviceType() === 'mobile') {
+      return startCamera();
+    }
+    
+    // For desktop/devices with multiple cameras
     const { frontCamera, backCamera } = identifyCameras(devices);
     
     if (newPosition === 'front' && frontCamera) {
@@ -321,13 +329,8 @@ export const useCamera = (options: UseCameraOptions = {}): UseCameraReturn => {
       return false;
     }
     
-    // If camera is active, restart with new device
-    if (isActive) {
-      return startCamera();
-    }
-    
-    return true;
-  }, [cameraPosition, devices, isActive, startCamera, toast]);
+    return startCamera();
+  }, [cameraPosition, devices, startCamera, stopCurrentStream, toast]);
 
   // Set camera to specific device
   const setDeviceId = useCallback(async (deviceId: string): Promise<boolean> => {
