@@ -11,12 +11,23 @@ const config: CapacitorConfig = {
   },
   android: {
     allowMixedContent: true, // Allow HTTP content in HTTPS app
+    permissions: [
+      "android.permission.CAMERA",
+      "android.permission.RECORD_AUDIO",
+      "android.permission.MODIFY_AUDIO_SETTINGS"
+    ]
+  },
+  ios: {
+    limitsNavigationsToAppBoundDomains: true
   },
   plugins: {
     LocalNotifications: {
       smallIcon: "ic_stat_icon_config_sample",
       iconColor: "#488AFF",
       sound: "beep.wav",
+    },
+    Camera: {
+      cameraPermissionText: "The app needs access to your camera",
     },
   },
 };
