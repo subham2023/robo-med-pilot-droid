@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useCamera } from '@/hooks/use-camera';
 import { Button } from "@/components/ui/button";
 import { RefreshCw, Camera, CameraOff } from "lucide-react";
@@ -10,15 +10,32 @@ interface NativeCameraProps {
 
 const NativeCamera: React.FC<NativeCameraProps> = ({ onError }) => {
   const { toast } = useToast();
+  const [initAttempted, setInitAttempted] = useState(false);
+  
   const {
     videoRef,
     isLoading,
     error,
     hasFrontAndBackCamera,
     startCamera,
-    switchCamera
-  } = useCamera({ autoStart: true });
+    switchCamera,
+    hasPermission
+  } = useCamera({ autoStart: false }); // Changed to false to prevent auto-initialization
 
+  // Handle initial camera start
+  useEffect(() => {
+    if (!initAttempted && !isLoading) {
+      setInitAttempted(true);
+      startCamera().catch((err) => {
+        console.error("Failed to start camera:", err);
+        if (onError) {
+          onError(err.message || "Failed to start camera");
+        }
+      });
+    }
+  }, [initAttempted, isLoading, startCamera, onError]);
+
+  // Handle errors
   useEffect(() => {
     if (error) {
       console.error("Camera error:", error);
@@ -32,6 +49,11 @@ const NativeCamera: React.FC<NativeCameraProps> = ({ onError }) => {
       }
     }
   }, [error, onError, toast]);
+
+  const handleRetry = async () => {
+    setInitAttempted(false); // Reset initialization flag
+    await startCamera();
+  };
 
   return (
     <div className="relative w-full h-full">
@@ -51,7 +73,7 @@ const NativeCamera: React.FC<NativeCameraProps> = ({ onError }) => {
           <Button 
             variant="outline" 
             className="mt-4 text-white border-white hover:bg-white hover:text-gray-900"
-            onClick={() => startCamera()}
+            onClick={handleRetry}
           >
             Retry
           </Button>
@@ -69,7 +91,7 @@ const NativeCamera: React.FC<NativeCameraProps> = ({ onError }) => {
       </div>
 
       <div className="absolute bottom-4 right-4 flex gap-2">
-        {hasFrontAndBackCamera && (
+        {hasFrontAndBackCamera && !error && (
           <Button
             variant="outline"
             size="icon"

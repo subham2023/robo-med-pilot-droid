@@ -1,4 +1,3 @@
-
 /**
  * Enhanced camera connection detection for modern browsers and mobile devices
  */
@@ -26,6 +25,10 @@ export const requestCameraPermission = async (): Promise<{
   if (!isCameraSupported()) {
     return { success: false, error: "Your browser doesn't support camera access" };
   }
+
+  if (!isSecureContext()) {
+    return { success: false, error: "Camera access requires HTTPS" };
+  }
   
   try {
     // Request access with explicit video config
@@ -45,27 +48,35 @@ export const requestCameraPermission = async (): Promise<{
     const devices = await navigator.mediaDevices.enumerateDevices();
     const videoDevices = devices.filter(device => device.kind === 'videoinput');
     
-    console.log('Available camera devices:', videoDevices);
-    
     if (videoDevices.length === 0) {
       return { success: false, devices: [], error: "No camera devices detected" };
     }
     
     return { success: true, devices: videoDevices };
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error requesting camera permission:', error);
     
     // Provide user-friendly error messages based on error type
     let errorMessage = "Unable to access camera";
     if (error instanceof DOMException) {
-      if (error.name === 'NotAllowedError') {
-        errorMessage = "Camera access denied. Please enable camera permissions in your browser settings.";
-      } else if (error.name === 'NotFoundError') {
-        errorMessage = "No camera detected on this device.";
-      } else if (error.name === 'NotReadableError') {
-        errorMessage = "Camera is already in use by another application.";
-      } else if (error.name === 'OverconstrainedError') {
-        errorMessage = "Camera doesn't meet the required constraints.";
+      switch (error.name) {
+        case 'NotAllowedError':
+          errorMessage = "Camera access denied. Please enable camera permissions in your browser settings.";
+          break;
+        case 'NotFoundError':
+          errorMessage = "No camera detected on this device.";
+          break;
+        case 'NotReadableError':
+          errorMessage = "Camera is already in use by another application.";
+          break;
+        case 'OverconstrainedError':
+          errorMessage = "Camera doesn't meet the required constraints.";
+          break;
+        case 'SecurityError':
+          errorMessage = "Camera access requires a secure connection (HTTPS).";
+          break;
+        default:
+          errorMessage = `Camera error: ${error.message || 'Unknown error'}`;
       }
     }
     
