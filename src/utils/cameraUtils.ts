@@ -1,4 +1,3 @@
-
 /**
  * Utility functions for camera connectivity and debugging
  */
@@ -178,26 +177,77 @@ export const validateIpWebcamUrl = (url: string): boolean => {
   return urlPattern.test(url);
 };
 
-// Check if browser supports getUserMedia
-export const checkCameraSupport = (): boolean => {
-  return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+// Enhanced camera support check with specific permission request
+export const checkCameraSupport = async (): Promise<boolean> => {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    return false;
+  }
+  
+  try {
+    // Request camera permission explicitly with user gesture
+    await navigator.mediaDevices.getUserMedia({ video: true });
+    return true;
+  } catch (error) {
+    console.error('Error checking camera support:', error);
+    return false;
+  }
 };
 
-// Get available video input devices
+// Get available video input devices with improved error handling
 export const getVideoDevices = async (): Promise<MediaDeviceInfo[]> => {
-  if (!checkCameraSupport()) {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    console.log('Browser does not support media devices API');
     return [];
   }
   
   try {
-    // Request permission
+    // Request permission with a direct user gesture
     await navigator.mediaDevices.getUserMedia({ video: true });
     
     // Get devices
     const devices = await navigator.mediaDevices.enumerateDevices();
-    return devices.filter(device => device.kind === 'videoinput');
+    const videoDevices = devices.filter(device => device.kind === 'videoinput');
+    
+    console.log('Available video devices:', videoDevices);
+    return videoDevices;
   } catch (error) {
     console.error('Error accessing media devices:', error);
     return [];
   }
+};
+
+// Identify front and back cameras from device list
+export const identifyCameras = (devices: MediaDeviceInfo[]): {
+  frontCamera: MediaDeviceInfo | null;
+  backCamera: MediaDeviceInfo | null;
+  otherCameras: MediaDeviceInfo[];
+} => {
+  let frontCamera: MediaDeviceInfo | null = null;
+  let backCamera: MediaDeviceInfo | null = null;
+  const otherCameras: MediaDeviceInfo[] = [];
+  
+  devices.forEach(device => {
+    const label = device.label.toLowerCase();
+    
+    if (label.includes('front') || label.includes('user') || label.includes('selfie')) {
+      frontCamera = device;
+    } else if (label.includes('back') || label.includes('rear') || label.includes('environment')) {
+      backCamera = device;
+    } else {
+      otherCameras.push(device);
+    }
+  });
+  
+  // Default handling if labels don't contain front/back keywords
+  if (!frontCamera && !backCamera && otherCameras.length > 1) {
+    // Assume first camera is front-facing on most devices
+    frontCamera = otherCameras.shift() || null;
+    // Assume second camera is rear-facing on most devices
+    backCamera = otherCameras.shift() || null;
+  } else if (!frontCamera && !backCamera && otherCameras.length === 1) {
+    // If only one camera, assume it's front-facing
+    frontCamera = otherCameras.shift() || null;
+  }
+  
+  return { frontCamera, backCamera, otherCameras };
 };

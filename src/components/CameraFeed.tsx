@@ -1,10 +1,9 @@
-
 /// <reference types="react" />
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
-import { RefreshCw, Camera, CameraOff, Loader, Smartphone } from "lucide-react";
+import { RefreshCw, Camera, CameraOff, Loader, Smartphone, SwitchCamera } from "lucide-react";
 import { 
   Select,
   SelectContent,
@@ -12,7 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { formatCameraUrl } from '@/utils/cameraUtils';
+import { formatCameraUrl, identifyCameras } from '@/utils/cameraUtils';
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { AspectRatio } from "@/components/ui/aspect-ratio";
@@ -60,8 +59,10 @@ const CameraFeed: React.FC<CameraFeedProps> = ({
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>("");
   const streamRef = useRef<MediaStream | null>(null);
+  const [permissionRequested, setPermissionRequested] = useState(false);
+  const [hasFrontAndBackCamera, setHasFrontAndBackCamera] = useState(false);
+  const [cameraPosition, setCameraPosition] = useState<'front' | 'back' | 'other'>('front');
 
-  // Reset state when camera URL changes
   useEffect(() => {
     if (!usingDeviceCamera) {
       setLoading(true);
@@ -76,75 +77,108 @@ const CameraFeed: React.FC<CameraFeedProps> = ({
     }
   }, [cameraUrl, usingDeviceCamera]);
 
-  // Get available camera devices
-  useEffect(() => {
-    const getDevices = async () => {
-      try {
-        // Request permission to access media devices
-        await navigator.mediaDevices.getUserMedia({ video: true });
-        
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const videoDevices = devices.filter(device => device.kind === 'videoinput');
-        setDevices(videoDevices);
-        
-        if (videoDevices.length > 0) {
-          setSelectedDeviceId(videoDevices[0].deviceId);
-        }
-        
-        console.log('Available video devices:', videoDevices);
-      } catch (err) {
-        console.error('Error accessing media devices:', err);
-        setError({
-          type: 'permission',
-          message: 'Unable to access camera. Please check camera permissions.'
-        });
+  const requestCameraPermission = useCallback(async () => {
+    try {
+      setLoading(true);
+      setPermissionRequested(true);
+      
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: true,
+        audio: false
+      });
+      
+      stream.getTracks().forEach(track => track.stop());
+      
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoDevices = devices.filter(device => device.kind === 'videoinput');
+      
+      console.log('Available video devices after permission:', videoDevices);
+      
+      setDevices(videoDevices);
+      
+      const { frontCamera, backCamera, otherCameras } = identifyCameras(videoDevices);
+      
+      if (frontCamera) {
+        setSelectedDeviceId(frontCamera.deviceId);
+        setCameraPosition('front');
+      } else if (backCamera) {
+        setSelectedDeviceId(backCamera.deviceId);
+        setCameraPosition('back');
+      } else if (otherCameras.length > 0) {
+        setSelectedDeviceId(otherCameras[0].deviceId);
+        setCameraPosition('other');
       }
-    };
-
-    if (videoMode === 'webcam') {
-      getDevices();
+      
+      setHasFrontAndBackCamera(!!(frontCamera && backCamera));
+      
+      setError(null);
+      return true;
+    } catch (err) {
+      console.error('Error requesting camera permission:', err);
+      setError({
+        type: 'permission',
+        message: 'Camera access was denied. Please check your browser permissions and try again.'
+      });
+      setLoading(false);
+      return false;
     }
-    
-    return () => {
-      // Clean up any active streams when component unmounts
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop());
-      }
-    };
-  }, [videoMode]);
+  }, []);
 
-  // Start device camera when in webcam mode and a device is selected
   useEffect(() => {
     const startCamera = async () => {
-      if (!usingDeviceCamera || videoMode !== 'webcam' || !selectedDeviceId) {
+      if (!usingDeviceCamera || videoMode !== 'webcam') {
         return;
+      }
+
+      if (!permissionRequested) {
+        const granted = await requestCameraPermission();
+        if (!granted) return;
+      }
+      
+      if (!selectedDeviceId) {
+        if (devices.length > 0) {
+          setSelectedDeviceId(devices[0].deviceId);
+        } else {
+          setError({
+            type: 'device',
+            message: 'No camera devices found. Please check your hardware connection.'
+          });
+          setLoading(false);
+          return;
+        }
       }
 
       try {
         setLoading(true);
         
-        // Stop any existing stream
         if (streamRef.current) {
           streamRef.current.getTracks().forEach(track => track.stop());
+          streamRef.current = null;
         }
 
-        // Get access to the selected camera
+        const facingMode = cameraPosition === 'front' ? 'user' : 
+                          cameraPosition === 'back' ? 'environment' : undefined;
+
+        const videoConstraint = selectedDeviceId 
+          ? { deviceId: { exact: selectedDeviceId } }
+          : { facingMode };
+        
+        console.log('Starting camera with constraints:', videoConstraint);
+
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
-            deviceId: { exact: selectedDeviceId },
+            ...videoConstraint,
             width: { ideal: 1280 },
             height: { ideal: 720 }
-          }
+          },
+          audio: false
         });
         
-        // Store stream reference for cleanup
         streamRef.current = stream;
         
-        // Connect stream to video element
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
           
-          // Wait for video to be ready
           videoRef.current.onloadedmetadata = () => {
             if (videoRef.current) {
               videoRef.current.play()
@@ -167,7 +201,7 @@ const CameraFeed: React.FC<CameraFeedProps> = ({
         console.error('Error starting camera:', err);
         setError({
           type: 'access',
-          message: 'Unable to access the selected camera. Please check permissions.'
+          message: 'Unable to access the selected camera. Please try another camera or check permissions.'
         });
         setLoading(false);
       }
@@ -176,26 +210,22 @@ const CameraFeed: React.FC<CameraFeedProps> = ({
     startCamera();
     
     return () => {
-      // Clean up stream when dependency changes
       if (streamRef.current && (videoMode !== 'webcam' || !usingDeviceCamera)) {
         streamRef.current.getTracks().forEach(track => track.stop());
         streamRef.current = null;
       }
     };
-  }, [usingDeviceCamera, videoMode, selectedDeviceId]);
+  }, [usingDeviceCamera, videoMode, selectedDeviceId, permissionRequested, requestCameraPermission, devices, cameraPosition]);
 
   const getProxiedUrl = (url: string): string => {
     if (!url) return '';
     
-    // If URL already includes a CORS proxy, return as is
     if (url.includes('corsproxy.io')) {
       return url;
     }
 
-    // Clean up the URL first
     let cleanUrl = url.trim();
     
-    // Ensure URL has protocol
     if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
       cleanUrl = `http://${cleanUrl}`;
     }
@@ -206,7 +236,6 @@ const CameraFeed: React.FC<CameraFeedProps> = ({
   const getVideoUrl = (): string => {
     if (!cameraUrl) return '';
     
-    // Clean up the base URL and ensure proper formatting
     let baseUrl = cameraUrl.trim();
     if (baseUrl.endsWith('/')) {
       baseUrl = baseUrl.slice(0, -1);
@@ -215,7 +244,6 @@ const CameraFeed: React.FC<CameraFeedProps> = ({
       baseUrl = `http://${baseUrl}`;
     }
     
-    // IP Webcam specific endpoints
     if (baseUrl.includes(':8080')) {
       switch (videoMode) {
         case 'mjpeg':
@@ -229,7 +257,6 @@ const CameraFeed: React.FC<CameraFeedProps> = ({
       }
     }
     
-    // Default endpoints for other cameras
     switch (videoMode) {
       case 'direct':
         return getProxiedUrl(`${baseUrl}/video`);
@@ -247,7 +274,6 @@ const CameraFeed: React.FC<CameraFeedProps> = ({
     const currentIndex = modes.indexOf(videoMode);
     const nextMode = modes[(currentIndex + 1) % modes.length];
     
-    // Check if we've tried all modes too many times
     if (Object.values(retryAttempts).every(attempts => attempts >= maxRetries)) {
       setError({
         type: 'connection',
@@ -257,7 +283,6 @@ const CameraFeed: React.FC<CameraFeedProps> = ({
       return;
     }
     
-    // Update retry attempts for the next mode
     setRetryAttempts(prev => ({
       ...prev,
       [nextMode]: prev[nextMode] + 1
@@ -280,7 +305,6 @@ const CameraFeed: React.FC<CameraFeedProps> = ({
     if (imageRef.current) {
       const { naturalWidth, naturalHeight } = imageRef.current;
       if (naturalWidth && naturalHeight) {
-        // Image loaded successfully with dimensions
         console.log(`Camera feed loaded: ${naturalWidth}x${naturalHeight}`);
       }
     }
@@ -313,10 +337,9 @@ const CameraFeed: React.FC<CameraFeedProps> = ({
     });
     
     if (usingDeviceCamera) {
-      // Restart device camera
+      setPermissionRequested(false);
       setVideoMode('webcam');
     } else {
-      // Try external camera
       setVideoMode('direct');
     }
     
@@ -342,13 +365,19 @@ const CameraFeed: React.FC<CameraFeedProps> = ({
     }
   };
 
-  const toggleCameraSource = (): void => {
-    setUsingDeviceCamera(!usingDeviceCamera);
+  const toggleCameraSource = async (): Promise<void> => {
+    const newUsingDeviceCamera = !usingDeviceCamera;
+    setUsingDeviceCamera(newUsingDeviceCamera);
     setLoading(true);
     setError(null);
     
-    if (!usingDeviceCamera) {
+    if (newUsingDeviceCamera) {
       setVideoMode('webcam');
+      
+      if (!permissionRequested) {
+        await requestCameraPermission();
+      }
+      
       toast({
         title: "Switching to Device Camera",
         description: "Using browser camera access",
@@ -364,12 +393,45 @@ const CameraFeed: React.FC<CameraFeedProps> = ({
   
   const handleDeviceChange = (deviceId: string): void => {
     setSelectedDeviceId(deviceId);
+    
+    const selectedDevice = devices.find(d => d.deviceId === deviceId);
+    if (selectedDevice) {
+      const label = selectedDevice.label.toLowerCase();
+      if (label.includes('front') || label.includes('user') || label.includes('selfie')) {
+        setCameraPosition('front');
+      } else if (label.includes('back') || label.includes('rear') || label.includes('environment')) {
+        setCameraPosition('back');
+      } else {
+        setCameraPosition('other');
+      }
+    }
+    
     setLoading(true);
     
     toast({
       title: "Changing Camera",
       description: "Switching to selected camera device",
     });
+  };
+
+  const switchCameraFacing = async (): Promise<void> => {
+    const newPosition = cameraPosition === 'front' ? 'back' : 'front';
+    setCameraPosition(newPosition);
+    
+    const { frontCamera, backCamera } = identifyCameras(devices);
+    
+    if (newPosition === 'front' && frontCamera) {
+      setSelectedDeviceId(frontCamera.deviceId);
+    } else if (newPosition === 'back' && backCamera) {
+      setSelectedDeviceId(backCamera.deviceId);
+    }
+    
+    toast({
+      title: "Switching Camera",
+      description: `Changing to ${newPosition} camera`,
+    });
+    
+    setLoading(true);
   };
 
   if (!cameraUrl && !usingDeviceCamera) {
@@ -429,6 +491,13 @@ const CameraFeed: React.FC<CameraFeedProps> = ({
             )}
           </div>
 
+          {error.type === 'permission' && (
+            <div className="mt-4 text-amber-300">
+              <p>Browser permission is required to access your camera.</p>
+              <p className="text-xs mt-1">Try clicking the button below to request access again.</p>
+            </div>
+          )}
+
           <div className="flex items-center space-x-2 mt-4">
             {!usingDeviceCamera && (
               <>
@@ -465,7 +534,7 @@ const CameraFeed: React.FC<CameraFeedProps> = ({
               className="w-full"
             >
               <RefreshCw className="h-4 w-4 mr-2" />
-              Retry Connection
+              Retry Camera Access
             </Button>
             
             <Button
@@ -551,19 +620,35 @@ const CameraFeed: React.FC<CameraFeedProps> = ({
               {usingDeviceCamera ? "IP Camera" : "Device Camera"}
             </Button>
             
-            {usingDeviceCamera && devices.length > 0 && (
-              <Select onValueChange={handleDeviceChange} value={selectedDeviceId}>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="Select camera" />
-                </SelectTrigger>
-                <SelectContent>
-                  {devices.map((device) => (
-                    <SelectItem key={device.deviceId} value={device.deviceId}>
-                      {device.label || `Camera ${devices.indexOf(device) + 1}`}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            {usingDeviceCamera && (
+              <>
+                {hasFrontAndBackCamera && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={switchCameraFacing}
+                    className="flex items-center gap-2"
+                  >
+                    <SwitchCamera className="h-4 w-4" />
+                    {cameraPosition === 'front' ? "Back Camera" : "Front Camera"}
+                  </Button>
+                )}
+                
+                {devices.length > 0 && (
+                  <Select onValueChange={handleDeviceChange} value={selectedDeviceId}>
+                    <SelectTrigger className="w-[180px]">
+                      <SelectValue placeholder="Select camera" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {devices.map((device) => (
+                        <SelectItem key={device.deviceId} value={device.deviceId}>
+                          {device.label || `Camera ${devices.indexOf(device) + 1}`}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </>
             )}
             
             {!usingDeviceCamera && (
