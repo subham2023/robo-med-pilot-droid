@@ -20,7 +20,6 @@ const NativeCamera: React.FC<NativeCameraProps> = ({ onError }) => {
     hasFrontAndBackCamera,
     startCamera,
     switchCamera,
-    hasPermission,
     isActive
   } = useCamera({ 
     autoStart: false,
